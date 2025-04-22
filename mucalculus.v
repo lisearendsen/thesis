@@ -28,7 +28,7 @@ Inductive formula {Act : Type} : Type :=
 Check nu (var 0).
 
 Record lts {Act : Type} : Type :=
-  { state :> Type
+  { state : Type
   ; transition : state -> Act -> state -> Prop 
   ; initial : state -> Prop}.
 
@@ -51,17 +51,17 @@ Fixpoint formulasemantics {Act : Type} (f : formula) (M : (@lts Act)) (e : env) 
   | or f' f'' => Union (formulasemantics f' M e) (formulasemantics f'' M e)
   | box act f' => fun s : (state M) => forall s' : (state M), (((In (formulasemantics f' M e) s')) -> ((transition M) s act s'))
   | diamond act f' => fun s : (state M) => exists s' : (state M), (((transition M) s act s') /\ (In (formulasemantics f' M e) s'))
-  | nu f' => fun s =>  exists S', (In S' s) /\ (Included S' (formulasemantics f' M (newenvironment e S')))
+  | nu f' => fun s =>  exists S', (Included S' (formulasemantics f' M (newenvironment e S'))) /\ (In S' s) 
   | mu f' => fun s =>  forall S', ((Included (formulasemantics f' M (newenvironment e S')) S') -> (In S' s))
   end.
 
-Definition infinitepath {Act : Type} (M : (@lts Act)) := nat -> (state M).
+Definition path {Act : Type} (M : (@lts Act)) := nat -> (state M).
 
-Definition validinfinitepath {Act : Type} (M : (@lts Act)) (path : (infinitepath M)) : Prop :=
-forall n : nat, (exists act: Act, ((transition M) (path n) act (path (S n)))). 
+Definition validpath {Act : Type} (M : (@lts Act)) (p : (path M)) : Prop :=
+forall n : nat, (exists act: Act, ((transition M) (p n) act (p (S n)))). 
 
-Definition validinfinitepathaction {Act : Type} {M : (@lts Act)} (path : (infinitepath M)) (act : Act) : Prop :=
-forall n : nat, ((transition M) (path n) act (path (S n))).
+Definition validactionpath {Act : Type} {M : (@lts Act)} (p : (path M)) (act : Act) : Prop :=
+forall n : nat, ((transition M) (p n) act (p (S n))).
 
 Lemma and_semantics_correctness: forall (Act : Type) (f1 f2 : formula) (M : (@lts Act)) 
 (e : env) (act : Act) (s : (state M)), 
@@ -87,9 +87,8 @@ intros.
 unfold newenvironment.
 unfold Included.
 exists (Full_set).
-split.
-apply Full_intro.
-intros.
+split;
+intros;
 apply Full_intro.
 Qed.
 
@@ -117,8 +116,8 @@ Lemma inbetweenlemma : forall (Act : Type) (M : (@lts Act))
 (act : Act) (s : (state M)) (x : (Ensemble (state M))),
 (In x s /\ (exists succ: state M -> state M, forall x': state M, 
 In x x' -> ((transition M) x' act (succ x')) /\ (In x (succ x'))))
--> (exists path : nat -> state M,
-  (forall n : nat, (transition M (path n) act (path (S n))) /\ In x (path  n)) /\ path 0 = s).
+-> (exists p : path M,
+  (forall n : nat, (transition M (p n) act (p (S n))) /\ In x (p  n)) /\ p 0 = s).
 Proof.
 intros.
 destruct H.
@@ -149,8 +148,8 @@ Lemma inbetweenlemma2 : forall (Act : Type) (M : (@lts Act))
 (act : Act) (s : (state M)) (x : (Ensemble (state M))),
 (In x s /\ (exists succ: state M -> state M, forall x': state M, 
 In x x' -> ((transition M) x' act (succ x')) /\ (In x (succ x'))))
--> (exists path : nat -> state M,
-  (forall n : nat, (transition M (path n) act (path (S n)))) /\ path 0 = s).
+-> (exists p : nat -> state M,
+  (forall n : nat, (transition M (p n) act (p (S n)))) /\ p 0 = s).
 Proof.
 intros.
 specialize (inbetweenlemma Act M act s x).
@@ -166,9 +165,9 @@ intuition.
 apply H0.
 Qed.
 
-Lemma nuX_diamondactX_rtl : forall (Act : Type) (M : (@lts Act)) (e : env)
+Lemma nuX_diamondactX_ltr : forall (Act : Type) (M : (@lts Act)) (e : env)
 (act : Act) (s : (state M)),
-(In (formulasemantics (nu (diamond act (var 0))) M e) s) -> (exists (path : infinitepath M), (validinfinitepathaction path act) /\ (path 0 = s)).
+(In (formulasemantics (nu (diamond act (var 0))) M e) s) -> (exists (p : path M), (validactionpath p act) /\ (p 0 = s)).
 Proof.
 intros.
 unfold formulasemantics in H.
@@ -181,7 +180,7 @@ apply choice with
 (R := fun x' s' => ((In x x') ->(transition M x' act s') /\ In x s')).
 intro.
 destruct (classic (In x x0)).
-destruct (H1 x0).
+destruct (H0 x0).
 exact H.
 exists x1.
 intro.
@@ -191,22 +190,18 @@ intro.
 contradiction.
 Qed.
 
-Lemma nuX_diamondactX_ltr : forall (Act : Type) (X : nat) (M : (@lts Act)) (e : env)
+Lemma nuX_diamondactX_rtl : forall (Act : Type) (X : nat) (M : (@lts Act)) (e : env)
 (act : Act) (s : (state M)),
-(exists (path : infinitepath M), ((validinfinitepathaction path act)) /\ path 0 = s) -> (In (formulasemantics (nu (diamond act (var 0))) M e) s).
+(exists (p : path M), ((validactionpath p act)) /\ p 0 = s) -> 
+  (In (formulasemantics (nu (diamond act (var 0))) M e) s).
 Proof.
-intros.
 simpl.
-unfold newenvironment.
-unfold In at 1.
+unfold In at 1, Included, In at 3.
+intros.
 destruct H.
-unfold Included.
-unfold In at 3.
-unfold validinfinitepathaction in H.
+unfold validactionpath in H.
 exists (fun (s' : (state M)) => (exists n : nat, x n = s')); unfold In.
 intuition.
-exists 0.
-auto.
 destruct H.
 exists (x (S x1)).
 intuition.
@@ -214,15 +209,18 @@ rewrite <- H.
 apply H0.
 exists (S x1).
 intuition.
+exists 0.
+auto.
 Qed.
 
 Lemma nuX_diamondactX : forall (Act : Type) (X : nat) (M : (@lts Act)) (e : env)
 (act : Act) (s : (state M)),
-(exists path : infinitepath M, validinfinitepathaction path act /\ path 0 = s) <-> (In (formulasemantics (nu (diamond act (var 0))) M e) s).
+(In (formulasemantics (nu (diamond act (var 0))) M e) s) <->
+  (exists path : path M, validactionpath path act /\ path 0 = s).
 Proof.
 intuition; 
-try apply nuX_diamondactX_ltr; auto.
-try apply nuX_diamondactX_rtl with (e := e); auto.
+try apply nuX_diamondactX_ltr with (e := e); auto.
+try apply nuX_diamondactX_rtl; auto.
 Qed. 
 
 Print Assumptions nuX_diamondactX.
