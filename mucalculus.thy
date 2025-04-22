@@ -438,15 +438,14 @@ proof-
         show "\<exists> n \<le> (Suc i). ?p 0 = s \<and> (?p n, act1, ?p (Suc n)) \<in> transition M \<and> (\<forall>m<n. (?p m, act2, ?p (Suc m)) \<in> transition M)" 
         proof
           let ?n = "Suc n"
-          have "?n \<le> (Suc i)" using b by auto
-          moreover have "?p 0 = s" by auto
-          moreover have "(?p ?n, act1, ?p (Suc ?n)) \<in> transition M" using b by auto
-          moreover have "(\<forall>m < ?n. (?p m, act2, ?p (Suc m)) \<in> transition M)" using a b less_Suc_eq_0_disj by force
-          thus "?n \<le> (Suc i) \<and> ?p 0 = s \<and> (?p ?n, act1, ?p (Suc ?n)) \<in> transition M \<and> (\<forall>m < ?n. (?p m, act2, ?p (Suc m)) \<in> transition M)" using calculation(1) calculation(3) (*wat is dat*) by auto
+          have c1 : "?n \<le> (Suc i)" using b by auto
+          have c2 : "(?p ?n, act1, ?p (Suc ?n)) \<in> transition M" using b by auto
+          have "(\<forall>m < ?n. (?p m, act2, ?p (Suc m)) \<in> transition M)" using a b less_Suc_eq_0_disj by force
+          thus "?n \<le> (Suc i) \<and> ?p 0 = s \<and> (?p ?n, act1, ?p (Suc ?n)) \<in> transition M \<and> (\<forall>m < ?n. (?p m, act2, ?p (Suc m)) \<in> transition M)" using c1 c2 by auto
         qed
       qed
     }
-    ultimately show "\<exists>p. \<exists> n \<le> (Suc i). p 0 = s \<and> (p n, act1, p (Suc n)) \<in> transition M \<and> (\<forall>m<n. (p m, act2, p (Suc m)) \<in> transition M)" using casesor by auto (*by blast*)
+    ultimately show "\<exists>p. \<exists> n \<le> (Suc i). p 0 = s \<and> (p n, act1, p (Suc n)) \<in> transition M \<and> (\<forall>m<n. (p m, act2, p (Suc m)) \<in> transition M)" using casesor by auto
   qed
 qed
 
