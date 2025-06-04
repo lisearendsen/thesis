@@ -202,13 +202,13 @@ proof (rule ccontr)
         fix n
         assume assum3: "n \<le> Suc (card (UNIV :: 's set)) \<longrightarrow> n \<le> card ((transformer f M e ^^ n) S')"
         assume assum4 : "Suc n \<le> Suc (card (UNIV :: 's set))"
-        hence "n \<le> (card (UNIV :: 's set))" by auto
-        hence "(transformer f M e ^^ n) S' \<noteq> (transformer f M e ^^ (Suc n)) S'" using assum1 by auto
+        hence "n \<le> (card (UNIV :: 's set))" by simp
+        hence "(transformer f M e ^^ n) S' \<noteq> (transformer f M e ^^ (Suc n)) S'" using assum1 by simp
         moreover have "(transformer f M e ^^ n) S' \<subseteq> (transformer f M e ^^ (Suc n)) S'" using assms(2) assum2 transformersubset by blast
-        ultimately have "(transformer f M e ^^ n) S' \<subset> (transformer f M e ^^ (Suc n)) S'" using psubset_eq by auto
+        ultimately have "(transformer f M e ^^ n) S' \<subset> (transformer f M e ^^ (Suc n)) S'" using psubset_eq by simp
         moreover have "finite ((transformer f M e ^^ Suc n) S')" using assms(1) rev_finite_subset by auto
         ultimately have "card ((transformer f M e ^^ n) S') < card ((transformer f M e ^^ Suc n) S')" using psubset_card_mono by metis
-        thus "Suc n \<le> card ((transformer f M e ^^ Suc n) S')" using assum3 assum4 by auto
+        thus "Suc n \<le> card ((transformer f M e ^^ Suc n) S')" using assum3 assum4 by simp
       qed
     qed
     hence contradiction1 : "card ((transformer f M e ^^ Suc (card(UNIV :: 's set))) S') \<ge>  Suc (card(UNIV :: 's set))" by auto
@@ -227,13 +227,13 @@ proof (rule ccontr)
         fix n
         assume assum3: "n \<le> Suc (card (UNIV :: 's set)) \<longrightarrow> card ((transformer f M e ^^ n) S') < Suc(card (UNIV :: 's set)) - n"
         assume assum4 : "Suc n \<le> Suc (card (UNIV :: 's set))"
-        hence "n \<le> (card (UNIV :: 's set))" by auto
-        hence "(transformer f M e ^^ n) S' \<noteq> (transformer f M e ^^ (Suc n)) S'" using assum1 by auto
+        hence "n \<le> (card (UNIV :: 's set))" by simp
+        hence "(transformer f M e ^^ n) S' \<noteq> (transformer f M e ^^ (Suc n)) S'" using assum1 by simp
         moreover have "(transformer f M e ^^ (Suc n)) S' \<subseteq> (transformer f M e ^^ n) S'" using assms(2) assum2 transformersubset by blast 
-        ultimately have "(transformer f M e ^^ (Suc n)) S' \<subset> (transformer f M e ^^  n) S'" using psubset_eq by auto
+        ultimately have "(transformer f M e ^^ (Suc n)) S' \<subset> (transformer f M e ^^  n) S'" using psubset_eq by simp
         moreover have "finite ((transformer f M e ^^ n) S')" using assms(1) rev_finite_subset by auto
         ultimately have "card ((transformer f M e ^^ (Suc n)) S') < card ((transformer f M e ^^ n) S')" using psubset_card_mono by metis
-        thus "card ((transformer f M e ^^ Suc n) S') < Suc(card (UNIV :: 's set)) - (Suc n)" using assum3 assum4 by auto
+        thus "card ((transformer f M e ^^ Suc n) S') < Suc(card (UNIV :: 's set)) - (Suc n)" using assum3 assum4 by simp
       qed
     qed
     hence "card ((transformer f M e ^^ Suc (card(UNIV :: 's set))) UNIV) <  0" by auto
@@ -248,6 +248,7 @@ lemma gfp_transformer [simp] :
   shows "((transformer f M e)^^(card (UNIV :: 's set)))(UNIV) = gfp (transformer f M e)"
 proof-
   have "\<exists>n \<le> card(UNIV :: 's set). ((transformer f M e)^^n) (UNIV) = ((transformer f M e)^^(Suc n)) (UNIV)" using assms exists_fixpoint by blast
+(*maybe here it should already say that it is fixed point and then use that iteration is same*)
   from this obtain n where assum2: "n \<le> card (UNIV :: 's set) \<and>  ((transformer f M e)^^n) (UNIV) = ((transformer f M e)^^(Suc n)) (UNIV)" by auto
   hence "(transformer f M e ^^ (n + (card (UNIV :: 's set) - n))) (UNIV) = (transformer f M e ^^ (Suc n +  (card (UNIV :: 's set) - n))) (UNIV)" using fpoweriplusn by metis
   hence "((transformer f M e)^^(card (UNIV :: 's set)))(UNIV) = ((transformer f M e)^^Suc(card (UNIV :: 's set)))(UNIV)" using assum2 by auto
@@ -278,12 +279,6 @@ lemma transformer_eq_mu [simp] :
   shows "formulasemantics (mu f) M e = ((transformer f M e)^^(card (UNIV :: 's set))){}"
   using lfp_eq_mu lfp_transformer assms by auto
 
-lemma largerandsmaller : "X - Suc 0 < i \<Longrightarrow> \<not> X \<le> i \<Longrightarrow> (P :: nat \<Rightarrow> bool) X"
-  by auto
-
-lemma largerandsmallerenv : "X - Suc 0 < i \<longrightarrow> \<not> X \<le> i \<longrightarrow> (e 0) = (e X)"
-  using largerandsmaller by auto
-
 lemma shiftdownnewenv_eq_newenvshiftdown [simp] : "shiftdownenv (newenvironment e S') (Suc i) = newenvironment (shiftdownenv e i) S'"
   apply (rule)
   apply (induct_tac x)
@@ -301,7 +296,7 @@ lemma switchnewenvironmentshiftdown : "formulasemantics (shiftdown f (Suc i)) M 
 
 lemma shiftdownlemma [simp] : "\<not>(occursvari f i) \<longrightarrow> (formulasemantics (shiftdown f i) M (shiftdownenv e i)) = (formulasemantics f M e)"
   apply (induct f arbitrary: e i; simp add: shiftdownenv_def)
-  apply (rule largerandsmallerenv)
+  apply (arith)
   apply (rule impI)
   apply (subst switchnewenvironmentshiftdown)
   prefer 2 
@@ -470,10 +465,6 @@ lemma prop40 :
   using assms prop40rtl apply metis
   done
 
-fun recursivepath :: "('s \<Rightarrow> 's \<times> 'a \<times> 's) \<Rightarrow> 's \<Rightarrow> nat \<Rightarrow> 's \<times> 'a \<times> 's" where
-"recursivepath succ s 0 = succ s" | 
-"recursivepath succ s (Suc n) = succ (target (recursivepath succ s n))"
-
 lemma existssuccessor : 
 "(\<forall>s'. s' \<in> S' \<longrightarrow> (\<exists>s'' act. act \<in> A \<and> (s', act, s'') \<in> (transition M) \<and> s'' \<in> S')) \<Longrightarrow>
 (\<exists> succ.(\<forall>s'. s' \<in> S' \<longrightarrow> (succ s' \<in> (transition M) \<and> source(succ s') = s' \<and> action (succ s') \<in> A \<and> target (succ s') \<in> S')))"
@@ -487,32 +478,7 @@ proof-
   thus "\<exists> succ.(\<forall>s'. s' \<in> S' \<longrightarrow> (succ s' \<in> (transition M) \<and> source(succ s') = s' \<and> action (succ s') \<in> A \<and> target (succ s') \<in> S'))" by auto
 qed
 
-lemma successorlemma [simp]: 
-  assumes "(s \<in> S' \<and> (\<forall>s'. s' \<in> S' \<longrightarrow> (\<exists>s'' act. act \<in> A \<and> (s', act, s'') \<in> (transition M) \<and> s'' \<in> S')))"
-  shows "(\<exists> p. validinfpath M s p \<and> (\<forall>n. action (p n) \<in> A))"
-  apply (simp add : validinfpath_def)
-proof-
-  have "\<exists> succ.(\<forall>s'. s' \<in> S' \<longrightarrow> (succ s' \<in> (transition M) \<and> source(succ s') = s' \<and> action (succ s') \<in> A \<and> target (succ s') \<in> S'))" using existssuccessor assms by auto
-  from this obtain succ where assum1 : "\<forall>s'. s' \<in> S' \<longrightarrow> (succ s' \<in> (transition M) \<and> source(succ s') = s' \<and> action (succ s') \<in> A \<and> target (succ s') \<in> S')" by auto
-  let ?p = "recursivepath succ s"
-  have "source (?p 0) = s" using assum1 assms by simp
-  moreover have "(\<forall>n. target(?p n) \<in> S' \<and> ?p n \<in> transition M \<and> target (?p n) = source (?p (Suc n)) \<and> action (?p n) \<in> A)"
-  proof
-    fix n
-    show "target(?p n) \<in> S' \<and> ?p n \<in> transition M \<and> target (?p n) = source (?p (Suc n)) \<and> action (?p n) \<in> A"
-      apply (induct n)
-      using assum1 assms apply (simp)
-    proof-
-      fix n
-      assume "target (recursivepath succ s n) \<in> S' \<and> recursivepath succ s n \<in> transition M \<and> target (recursivepath succ s n) = source (recursivepath succ s (Suc n)) \<and> action (recursivepath succ s n) \<in> A"
-      thus "target (recursivepath succ s (Suc n)) \<in> S' \<and> recursivepath succ s (Suc n) \<in> transition M \<and> target (recursivepath succ s (Suc n)) = source (recursivepath succ s (Suc (Suc n))) \<and> action (recursivepath succ s (Suc n)) \<in> A" using assum1 by auto
-    qed
-  qed
-  ultimately have "source (?p 0) = s \<and> (\<forall>n. ?p n \<in> transition M \<and> target (?p n) = source (?p (Suc n))) \<and> (\<forall>n. action (?p n) \<in> A)" by auto
-  thus "\<exists>p. source (p 0) = s \<and> (\<forall>n. p n \<in> transition M \<and> target (p n) = source (p (Suc n))) \<and> (\<forall>n. action (p n) \<in> A)" by blast
-qed 
-
-lemma invariant : 
+lemma invariantApath : 
   assumes "\<not>(occursvari f 0)"
   and "S' \<subseteq> (\<lbrakk>f\<rbrakk> M (newenvironment e S') \<union> {s. \<exists>s' act. act \<in> A \<and> (s, act, s') \<in> transition M \<and> s' \<in> S'})"
   and "s \<in> S' \<inter> {s. \<nexists>p s'. validfinpath M s p s' \<and> s' \<in> (formulasemantics (shiftdown f 0) M e) \<and> (set (map action p) \<subseteq> A)}"
@@ -557,16 +523,17 @@ proof-
   proof-
     assume assum2 : "\<nexists>p s'. validfinpath M s p s' \<and> s' \<in> \<lbrakk>shiftdown f 0\<rbrakk> M e \<and> set (map action p) \<subseteq> A"
     let ?S' = "S' \<inter> {s'. \<nexists>p s''. validfinpath M s' p s'' \<and> s'' \<in> (formulasemantics (shiftdown f 0) M e) \<and> (set (map action p) \<subseteq> A)}" 
-    have "(\<forall>s'. (s' \<in> ?S' \<longrightarrow> (\<exists>s'' act. act \<in> A \<and> (s', act, s'') \<in> (transition M) \<and> s'' \<in> ?S')))"
+    have "(\<forall>s'. (s' \<in> ?S' \<longrightarrow> (\<exists>t. source t = s' \<and> action t \<in> A \<and> t \<in> transition M \<and> target t \<in> ?S')))"
       apply (rule allI)
     proof
-      fix x
-      assume assum3 : "x \<in> S' \<inter> {s'. \<nexists>p s''. validfinpath M s' p s'' \<and> s'' \<in> (formulasemantics (shiftdown f 0) M e) \<and> (set (map action p) \<subseteq> A)}"
-      have "\<not> occursvari f 0 \<Longrightarrow> S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S') \<union> {s. \<exists>s' act. act \<in> A \<and> (s, act, s') \<in> transition M \<and> s' \<in> S'} \<Longrightarrow> x \<in> S' \<inter> {s. \<nexists>p s'. validfinpath M s p s' \<and> s' \<in> \<lbrakk>shiftdown f 0\<rbrakk> M e \<and> set (map action p) \<subseteq> A} \<Longrightarrow> \<exists>s' act. act \<in> A \<and> (x, act, s') \<in> transition M \<and> s' \<in> S' \<inter> {s'. \<nexists>p s''. validfinpath M s' p s'' \<and> s'' \<in> \<lbrakk>shiftdown f 0\<rbrakk> M e \<and> set (map action p) \<subseteq> A}" using invariant by (simp)
-      thus "\<exists>s'' act. act \<in> A \<and> (x, act, s'') \<in> (transition M) \<and> s'' \<in> S' \<inter> {s'. \<nexists>p s''. validfinpath M s' p s'' \<and> s'' \<in> (formulasemantics (shiftdown f 0) M e) \<and> (set (map action p) \<subseteq> A)}" using assum1 assum3 assms(1) by simp
+      fix s
+      assume assum3 : "s \<in> ?S'"
+      have "\<not> occursvari f 0 \<Longrightarrow> S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S') \<union> {s. \<exists>s' act. act \<in> A \<and> (s, act, s') \<in> transition M \<and> s' \<in> S'} \<Longrightarrow> s \<in> S' \<inter> {s. \<nexists>p s'. validfinpath M s p s' \<and> s' \<in> \<lbrakk>shiftdown f 0\<rbrakk> M e \<and> set (map action p) \<subseteq> A} \<Longrightarrow> \<exists>s' act. act \<in> A \<and> (s, act, s') \<in> transition M \<and> s' \<in> S' \<inter> {s'. \<nexists>p s''. validfinpath M s' p s'' \<and> s'' \<in> \<lbrakk>shiftdown f 0\<rbrakk> M e \<and> set (map action p) \<subseteq> A}" using invariantApath by (simp)
+      hence "\<exists>s'' act. act \<in> A \<and> (s, act, s'') \<in> (transition M) \<and> s'' \<in> ?S'" using assum1 assum3 assms(1) by simp
+      thus "\<exists>t. source t = s \<and> action t \<in> A \<and> t \<in> transition M \<and> target t \<in> ?S'" by auto
     qed
     moreover have "s \<in> ?S'" using assum1 assum2 by auto
-    ultimately show "s \<in> ?S' \<and> (\<forall>s'. (s' \<in> ?S' \<longrightarrow> (\<exists>s'' act. act \<in> A \<and> (s', act, s'') \<in> (transition M) \<and> s'' \<in> ?S')))" by auto
+    ultimately show "s \<in> ?S' \<and> (\<forall>s'. (s' \<in> ?S' \<longrightarrow> (\<exists>t. source t = s' \<and> action t \<in> A \<and> t \<in> transition M \<and> target t \<in> ?S')))" by simp
   qed
   thus ?thesis by auto
 qed
@@ -709,23 +676,23 @@ proof
 qed
 
 lemma Diamondmatch :
-  assumes "finite (UNIV :: 'a set)"
-  shows "s \<in> \<lbrakk>Diamond (R :: 'a regularformula) f\<rbrakk> M e = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e)"
+  "finitereg R \<Longrightarrow> s \<in> \<lbrakk>Diamond R f\<rbrakk> M e = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e)"
   apply (induct R arbitrary : f s e)
-  apply (simp)
-  apply (subst Diamond_eq_exist)
-  using assms(1) apply (rule finitesubsetUNIV)
-  apply (simp; force)
+  apply simp
+  apply (subst Diamond_eq_exist; simp)
+  apply force
   prefer 2
   apply auto[1]
-   prefer 2
+  prefer 2
+  unfolding finitereg.simps
 proof
   fix R f s e
-  show "(\<And>f s e. (s \<in> \<lbrakk>Diamond R f\<rbrakk> M e) = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e)) \<Longrightarrow> \<exists>p s'. validfinpath M s p s' \<and> match (repeat R) p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e \<Longrightarrow> s \<in> \<lbrakk>Diamond (repeat R) f\<rbrakk> M e" by (rule inductionstepmatch)
+  show "(\<And>f s e. finitereg R \<Longrightarrow> (s \<in> \<lbrakk>Diamond R f\<rbrakk> M e) = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e)) \<Longrightarrow> finitereg R \<Longrightarrow>  \<exists>p s'. validfinpath M s p s' \<and> match (repeat R) p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e \<Longrightarrow> s \<in> \<lbrakk>Diamond (repeat R) f\<rbrakk> M e" by (rule inductionstepmatch)
 next
   fix R f s e
-  assume assum1 : "(\<And>f s e. (s \<in> \<lbrakk>Diamond R f\<rbrakk> M e) = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e))"
-  assume assum2 : "s \<in> \<lbrakk>Diamond (repeat R) f\<rbrakk> M e"
+  assume assum1 : "(\<And>f s e. finitereg R \<Longrightarrow> (s \<in> \<lbrakk>Diamond R f\<rbrakk> M e) = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e))"
+  assume assum2 : "finitereg R"
+  assume assum3 : "s \<in> \<lbrakk>Diamond (repeat R) f\<rbrakk> M e"
   let ?S' = "{s. \<exists>p s' n. validfinpath M s p s' \<and> matchntimes n R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e}"
   have "\<lbrakk>f\<rbrakk> M e \<subseteq> ?S'"
   proof
@@ -738,40 +705,72 @@ next
   proof
     fix s 
     assume "s \<in> \<lbrakk>Diamond R (var 0)\<rbrakk> M (newenvironment e ?S')"
-    hence "\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> ?S'" using assum1 by auto
+    hence "\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> ?S'" using assum1 assum2 by auto
     from this obtain p s' p' s'' n where assum3 : "validfinpath M s p s' \<and> match R p \<and> validfinpath M s' p' s'' \<and> matchntimes n R p' \<and> s'' \<in> \<lbrakk>f\<rbrakk> M e" by blast
     hence "validfinpath M s (p @ p') s''" using validfinpathsplit by metis
     moreover have "matchntimes (Suc n) R (p @ p') \<and> s'' \<in> \<lbrakk>f\<rbrakk> M e" using assum3 by auto
     ultimately show "s \<in> ?S'" by blast
   qed
   ultimately have "\<lbrakk>Diamond R (var 0)\<rbrakk> M (newenvironment e ?S') \<union> \<lbrakk>f\<rbrakk> M e \<subseteq> ?S'" by auto
-  thus "\<exists>p s'. validfinpath M s p s' \<and> match (repeat R) p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e" using assum2 by auto
+  thus "\<exists>p s'. validfinpath M s p s' \<and> match (repeat R) p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e" using assum3 by auto
 next
   fix R Q f s e
-  assume "(\<And>f s e. (s \<in> \<lbrakk>Diamond R f\<rbrakk> M e) = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e))"
-  hence assum1 : "(s \<in> \<lbrakk>Diamond R (Diamond Q f)\<rbrakk> M e) = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> \<lbrakk>Diamond Q f\<rbrakk> M e)" by auto
-  assume "(\<And>f s e. (s \<in> \<lbrakk>Diamond Q f\<rbrakk> M e) = (\<exists>p s'. validfinpath M s p s' \<and> match Q p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e))"
-  hence "(s \<in> \<lbrakk>Diamond R (Diamond Q f)\<rbrakk> M e) = (\<exists>p p' s''. (\<exists>s'. validfinpath M s p s' \<and> validfinpath M s' p' s'') \<and> match R p \<and> match Q p' \<and> s'' \<in> \<lbrakk>f\<rbrakk> M e)" using assum1 by blast
-  hence "(s \<in> \<lbrakk>Diamond R (Diamond Q f)\<rbrakk> M e) = (\<exists>p p' s''. validfinpath M s (p @ p') s'' \<and> match R p \<and> match Q p' \<and> s'' \<in> \<lbrakk>f\<rbrakk> M e)" by simp
+  assume "(\<And>f s e. finitereg R \<Longrightarrow> (s \<in> \<lbrakk>Diamond R f\<rbrakk> M e) = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e))"
+  hence assum1 : "finitereg R \<Longrightarrow> (s \<in> \<lbrakk>Diamond R (Diamond Q f)\<rbrakk> M e) = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> \<lbrakk>Diamond Q f\<rbrakk> M e)" by auto
+  assume "(\<And>f s e. finitereg Q \<Longrightarrow> (s \<in> \<lbrakk>Diamond Q f\<rbrakk> M e) = (\<exists>p s'. validfinpath M s p s' \<and> match Q p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e))"
+  hence assum2 : "finitereg R \<Longrightarrow> finitereg Q \<Longrightarrow> (s \<in> \<lbrakk>Diamond R (Diamond Q f)\<rbrakk> M e) = (\<exists>p p' s''. (\<exists>s'. validfinpath M s p s' \<and> validfinpath M s' p' s'') \<and> match R p \<and> match Q p' \<and> s'' \<in> \<lbrakk>f\<rbrakk> M e)" using assum1 by blast
+  assume "finitereg R \<and> finitereg Q"
+  hence "(s \<in> \<lbrakk>Diamond R (Diamond Q f)\<rbrakk> M e) = (\<exists>p p' s''. validfinpath M s (p @ p') s'' \<and> match R p \<and> match Q p' \<and> s'' \<in> \<lbrakk>f\<rbrakk> M e)" using assum2 by simp
   thus "(s \<in> \<lbrakk>Diamond (after R Q) f\<rbrakk> M e) = (\<exists>p s''. validfinpath M s p s'' \<and> match (after R Q) p \<and> s'' \<in> \<lbrakk>f\<rbrakk> M e)" by auto
 qed
 
+lemma negformula [simp] : "(s \<in> \<lbrakk>neg f\<rbrakk> M e) = (s \<notin> \<lbrakk>f\<rbrakk> M e)"
+  by simp
+
 lemma theorem21 :
-  assumes "finite (UNIV :: 'a set)" (*introduce definition for finite regular formulas*)
-  shows "s \<in> \<lbrakk>neg (Diamond \<rho> (nu (or (or (Diamond (acts \<alpha>\<^sub>e) tt) (Box (acts (-B)) ff)) (Diamond (acts (-\<alpha>\<^sub>f)) (var 0)))))\<rbrakk> (M :: ('a, 's)lts) e 
+  assumes "finite (-\<alpha>\<^sub>f) \<and> finite \<alpha>\<^sub>e \<and> finite (-B)"
+  and "finitereg \<rho>"  (*introduce definition for finite regular formulas*)
+  shows "s \<in> \<lbrakk>neg (Diamond \<rho> (nu (or (or (Diamond (acts \<alpha>\<^sub>e) tt) (Box (acts (-B)) ff)) (Diamond (acts (-\<alpha>\<^sub>f)) (var 0)))))\<rbrakk> M e 
     = (\<nexists>p. violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p)"
+  apply (subst negformula)
 proof-
-  have "\<forall>s. s \<in> \<lbrakk>Diamond \<rho> (nu (or (or (Diamond (acts \<alpha>\<^sub>e) tt) (Box (acts (-B)) ff)) (Diamond (acts (-\<alpha>\<^sub>f)) (var 0))))\<rbrakk> (M :: ('a, 's)lts) e 
+  have "\<forall>s. s \<in> \<lbrakk>Diamond \<rho> (nu (or (or (Diamond (acts \<alpha>\<^sub>e) tt) (Box (acts (-B)) ff)) (Diamond (acts (-\<alpha>\<^sub>f)) (var 0))))\<rbrakk> M e 
     = (\<exists>p. violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p )"
     apply (subst Diamondmatch)
-    apply (simp add: assms)
+    apply (simp add: assms(2))
     apply (subst splitviolating)
   proof
-    have "\<forall>s'. (s' \<in> \<lbrakk>nu (or (or (Diamond (acts \<alpha>\<^sub>e) tt) (Box (acts (- B)) ff)) (Diamond (acts (- \<alpha>\<^sub>f)) (var 0)))\<rbrakk> M e = 
-    (\<exists>p'. violating p' eps \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s' B p'))"
-      apply (subst violatingempty)
-      apply (subst theorem21generalized; simp add: assms del: Box.simps Diamond.simps)
-(*this is not finished as paths is not finished*)
-(*also it still needs some arbitrary lemmas like 
-shiftdown (Diamond (acts A) f) 0 = (Diamond (acts A) (shiftdown f 0))*)
-  
+    let ?A = "\<lambda>s'. s' \<in> \<lbrakk>nu (or (or (Diamond (acts \<alpha>\<^sub>e) tt) (Box (acts (- B)) ff)) (Diamond (acts (- \<alpha>\<^sub>f)) (var 0)))\<rbrakk> M e"
+    let ?B = "\<lambda>s'.  (\<exists>p s''. validfinpath M s' p s'' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s'' \<or> (\<exists>s''' a. a \<in> \<alpha>\<^sub>e \<and> (s'', a, s''' ) \<in> transition M))) \<or> (\<exists>p. validinfpath M s' p \<and> \<not> occurs \<alpha>\<^sub>f (inf p))"
+    let ?C = "\<lambda>s'. (\<exists> p. freeuntiloccurence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s' B p)"
+    have res1 : "\<forall>s'. ?A s' = ?B s'"
+      apply (subst theorem21generalized; simp add: assms(1) assms(2) Boxcomplement_locked del: Diamond.simps Box.simps Box_eq_forall)
+      apply (meson Compl_iff subset_iff)
+      done
+    moreover have res2: "\<forall>s'. ?C s' = ?B s'" by (subst splitcases; simp)
+    have "\<forall>s'. ?A s' = ?C s'"
+    proof
+      fix s'
+      show "?A s' = ?C s'"
+        apply (subst res1)
+        apply (subst res2)
+        apply (auto)
+        done
+    qed
+    thus "\<And>s. (\<exists>p s'. validfinpath M s p s' \<and> match \<rho> p \<and> s' \<in> \<lbrakk>nu (formula.or (formula.or (Diamond (acts \<alpha>\<^sub>e) tt) (Box (acts (- B)) ff)) (Diamond (acts (- \<alpha>\<^sub>f)) (var 0)))\<rbrakk> M e) = (\<exists>p p' s'. match \<rho> p \<and> validfinpath M s p s' \<and> freeuntiloccurence p' \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s' B p')" by blast
+  qed
+  thus "(s \<notin> \<lbrakk>Diamond \<rho> (nu (formula.or (formula.or (Diamond (acts \<alpha>\<^sub>e) tt) (Box (acts (- B)) ff)) (Diamond (acts (- \<alpha>\<^sub>f)) (var 0))))\<rbrakk> M e) = (\<nexists>p. violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p)" by blast
+qed
+
+lemma lemma50 : 
+  assumes "finite (-\<alpha>\<^sub>f) \<and> finite \<alpha>\<^sub>e \<and> finite (\<alpha>\<^sub>_el a)"
+  shows "s \<in> \<lbrakk>Diamond (repeat (acts (-\<alpha>\<^sub>f))) (or (or (Diamond (acts \<alpha>\<^sub>e) tt) (and' (\<phi>_off a) (var 0))) (Diamond (acts ((\<alpha>\<^sub>_el a) -\<alpha>\<^sub>f)) (var 0)))\<rbrakk> M (newenvironment e S') 
+    = (\<exists>p s'. validfinpath M s p s' \<and> (set (map action p) \<subseteq> -\<alpha>\<^sub>f \<and> 
+        ((\<exists>a' \<in> \<alpha>\<^sub>e. a' \<in> enabledactions M s') \<or> (s' \<in> S' \<and> s' \<in> \<lbrakk>\<phi>_off a\<rbrakk> M (newenvironment e S')) \<or> (\<exists>t. action t \<in> ((\<alpha>\<^sub>_el a) - \<alpha>\<^sub>f) \<and> t \<in> transition M \<and> source t = s' \<and> target t \<in> S')) ))"
+(*(action (p ! (length p - Suc 0)) \<in> ((\<alpha>\<^sub>_el a) - \<alpha>\<^sub>f))*)
+  apply (subst Diamondmatch)
+  apply (simp add: assms)
+  apply (subst matchrepeatact)
+  apply (simp del: Diamond.simps add: assms enabledactions_def)
+  apply fastforce
+  done 
