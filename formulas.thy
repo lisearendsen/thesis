@@ -316,7 +316,8 @@ next
   thus "\<Union> {S'. S' \<subseteq> \<lbrakk>shiftdown f (Suc i)\<rbrakk> M (shiftdownenv (newenvironment e S') (Suc i))} = \<Union> {S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}" using musubset by auto
 qed
 
-lemma shiftdowncoro : "\<not>(occursvari f 0) \<longrightarrow> (formulasemantics (shiftdown f 0) M e) = (formulasemantics f M (newenvironment e S'))" 
+(*should this not be in semantics*)
+lemma shiftdowncoro : "\<not>(occursvari f 0) \<longrightarrow> (formulasemantics f M (newenvironment e S')) = (formulasemantics (shiftdown f 0) M e)" 
   using shiftdownlemma shiftdownnewenvzero_eq_newenv by metis
 
 lemma targetpath [simp]: 
@@ -349,7 +350,7 @@ proof-
     assume assum3 : "(\<And>s. validfinpath M s p s' \<and> action ` set p \<subseteq> A \<and> s \<in> \<lbrakk>shiftdown g 0\<rbrakk> M e \<and> target ` set p \<subseteq> \<lbrakk>shiftdown g 0\<rbrakk> M e \<and> s' \<in> S' \<longrightarrow> s \<in> S')"
     assume assum4 : "s = source t \<and> t \<in> transition M \<and> validfinpath M (target t) p s' \<and> action t \<in> A \<and> action ` set p \<subseteq> A \<and> s \<in> \<lbrakk>shiftdown g 0\<rbrakk> M e \<and> target t \<in> \<lbrakk>shiftdown g 0\<rbrakk> M e \<and> target ` set p \<subseteq> \<lbrakk>shiftdown g 0\<rbrakk> M e \<and> s' \<in> S'"
     hence "target t \<in> S'" using assum3 by auto
-    hence "(source t, action t, target t) \<in> transition M \<and> target t \<in> S'" using assum4 split by metis
+    hence "(source t, action t, target t) \<in> transition M \<and> target t \<in> S'" using assum4 splittransition by metis
     hence c1 : "source t \<in> {s. \<exists>s' act. act \<in> A \<and> (s, act, s') \<in> transition M \<and> s' \<in> S'}" using assum4 by blast
     have "source t \<in> formulasemantics (shiftdown g 0) M e" using assum4 by auto
     hence c2 : "source t \<in> formulasemantics g M (newenvironment e S')" using shiftdowncoro assms(3) by metis
@@ -465,19 +466,6 @@ lemma prop40 :
   using assms prop40rtl apply metis
   done
 
-lemma existssuccessor : 
-"(\<forall>s'. s' \<in> S' \<longrightarrow> (\<exists>s'' act. act \<in> A \<and> (s', act, s'') \<in> (transition M) \<and> s'' \<in> S')) \<Longrightarrow>
-(\<exists> succ.(\<forall>s'. s' \<in> S' \<longrightarrow> (succ s' \<in> (transition M) \<and> source(succ s') = s' \<and> action (succ s') \<in> A \<and> target (succ s') \<in> S')))"
-proof-
-  assume "\<forall>s'. s' \<in> S' \<longrightarrow> (\<exists>s'' act. act \<in> A \<and> (s', act, s'') \<in> (transition M) \<and> s'' \<in> S')"
-  hence "(\<exists> succ actsucc.(\<forall>s'. s' \<in> S' \<longrightarrow> ((s', actsucc s', succ s') \<in> (transition M) \<and> succ s' \<in> S' \<and> actsucc s' \<in> A)))" by metis
-  from this obtain succ actsucc where assum1 : "\<forall>s'. s' \<in> S' \<longrightarrow> ((s', actsucc s', succ s') \<in> (transition M) \<and> succ s' \<in> S'  \<and> actsucc s' \<in> A)" by auto
-  let ?succ = "\<lambda>s. (s, actsucc s, succ s)"
-  have "\<forall>s'. s' \<in> S' \<longrightarrow> ?succ s' \<in> transition M \<and> source (?succ s') = s' \<and> action (?succ s') \<in> A \<and> target (?succ s') \<in> S'"
-    using assum1 by simp
-  thus "\<exists> succ.(\<forall>s'. s' \<in> S' \<longrightarrow> (succ s' \<in> (transition M) \<and> source(succ s') = s' \<and> action (succ s') \<in> A \<and> target (succ s') \<in> S'))" by auto
-qed
-
 lemma invariantApath : 
   assumes "\<not>(occursvari f 0)"
   and "S' \<subseteq> (\<lbrakk>f\<rbrakk> M (newenvironment e S') \<union> {s. \<exists>s' act. act \<in> A \<and> (s, act, s') \<in> transition M \<and> s' \<in> S'})"
@@ -564,7 +552,7 @@ proof-
         fix t p
         (*assum2 only needed for base case*)
         assume assum3 : "t \<in> transition M \<and> validfinpath M (target t) p s' \<and> s' \<in> \<lbrakk>shiftdown f 0\<rbrakk> M e \<and> action t \<in> A \<and> action ` set p \<subseteq> A"
-        hence "(source t, action t, target t) \<in> transition M \<and> (validfinpath M (target t) p s' \<and> s' \<in> \<lbrakk>shiftdown f 0\<rbrakk> M e \<and> action t \<in> A \<and> action ` set p \<subseteq> A)" using split by metis
+        hence "(source t, action t, target t) \<in> transition M \<and> (validfinpath M (target t) p s' \<and> s' \<in> \<lbrakk>shiftdown f 0\<rbrakk> M e \<and> action t \<in> A \<and> action ` set p \<subseteq> A)" using splittransition by metis
         thus "source t \<in> \<lbrakk>shiftdown f 0\<rbrakk> M e \<or> (\<exists>s' act. act \<in> A \<and> (source t, act, s') \<in> transition M \<and> (\<exists>p s''. validfinpath M s' p s'' \<and> s'' \<in> \<lbrakk>shiftdown f 0\<rbrakk> M e \<and> action ` set p \<subseteq> A))" by blast
       qed
       thus "s \<in> \<lbrakk>shiftdown f 0\<rbrakk> M e \<union> {s. \<exists>s' act. act \<in> A \<and> (s, act, s') \<in> transition M \<and> s' \<in> ?S'}" using assum1 by auto
@@ -742,7 +730,7 @@ proof-
   proof
     let ?A = "\<lambda>s'. s' \<in> \<lbrakk>nu (or (or (Diamond (acts \<alpha>\<^sub>e) tt) (Box (acts (- B)) ff)) (Diamond (acts (- \<alpha>\<^sub>f)) (var 0)))\<rbrakk> M e"
     let ?B = "\<lambda>s'.  (\<exists>p s''. validfinpath M s' p s'' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s'' \<or> (\<exists>s''' a. a \<in> \<alpha>\<^sub>e \<and> (s'', a, s''' ) \<in> transition M))) \<or> (\<exists>p. validinfpath M s' p \<and> \<not> occurs \<alpha>\<^sub>f (inf p))"
-    let ?C = "\<lambda>s'. (\<exists> p. freeuntiloccurence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s' B p)"
+    let ?C = "\<lambda>s'. (\<exists> p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s' B p)"
     have res1 : "\<forall>s'. ?A s' = ?B s'"
       apply (subst theorem21generalized; simp add: assms(1) assms(2) Boxcomplement_locked del: Diamond.simps Box.simps Box_eq_forall)
       apply (meson Compl_iff subset_iff)
@@ -757,20 +745,112 @@ proof-
         apply (auto)
         done
     qed
-    thus "\<And>s. (\<exists>p s'. validfinpath M s p s' \<and> match \<rho> p \<and> s' \<in> \<lbrakk>nu (formula.or (formula.or (Diamond (acts \<alpha>\<^sub>e) tt) (Box (acts (- B)) ff)) (Diamond (acts (- \<alpha>\<^sub>f)) (var 0)))\<rbrakk> M e) = (\<exists>p p' s'. match \<rho> p \<and> validfinpath M s p s' \<and> freeuntiloccurence p' \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s' B p')" by blast
+    thus "\<And>s. (\<exists>p s'. validfinpath M s p s' \<and> match \<rho> p \<and> s' \<in> \<lbrakk>nu (formula.or (formula.or (Diamond (acts \<alpha>\<^sub>e) tt) (Box (acts (- B)) ff)) (Diamond (acts (- \<alpha>\<^sub>f)) (var 0)))\<rbrakk> M e) = (\<exists>p p' s'. match \<rho> p \<and> validfinpath M s p s' \<and> freeuntiloccurrence p' \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s' B p')" by blast
   qed
   thus "(s \<notin> \<lbrakk>Diamond \<rho> (nu (formula.or (formula.or (Diamond (acts \<alpha>\<^sub>e) tt) (Box (acts (- B)) ff)) (Diamond (acts (- \<alpha>\<^sub>f)) (var 0))))\<rbrakk> M e) = (\<nexists>p. violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p)" by blast
 qed
 
 lemma lemma50 : 
   assumes "finite (-\<alpha>\<^sub>f) \<and> finite \<alpha>\<^sub>e \<and> finite (\<alpha>\<^sub>_el a)"
+  and "\<not>(occursvari (\<phi>_off a) 0)"
   shows "s \<in> \<lbrakk>Diamond (repeat (acts (-\<alpha>\<^sub>f))) (or (or (Diamond (acts \<alpha>\<^sub>e) tt) (and' (\<phi>_off a) (var 0))) (Diamond (acts ((\<alpha>\<^sub>_el a) -\<alpha>\<^sub>f)) (var 0)))\<rbrakk> M (newenvironment e S') 
     = (\<exists>p s'. validfinpath M s p s' \<and> (set (map action p) \<subseteq> -\<alpha>\<^sub>f \<and> 
-        ((\<exists>a' \<in> \<alpha>\<^sub>e. a' \<in> enabledactions M s') \<or> (s' \<in> S' \<and> s' \<in> \<lbrakk>\<phi>_off a\<rbrakk> M (newenvironment e S')) \<or> (\<exists>t. action t \<in> ((\<alpha>\<^sub>_el a) - \<alpha>\<^sub>f) \<and> t \<in> transition M \<and> source t = s' \<and> target t \<in> S')) ))"
-(*(action (p ! (length p - Suc 0)) \<in> ((\<alpha>\<^sub>_el a) - \<alpha>\<^sub>f))*)
+        ((\<exists>a' \<in> \<alpha>\<^sub>e. a' \<in> enabledactions M s') \<or> (s' \<in> S' \<and> s' \<in> \<lbrakk>shiftdown (\<phi>_off a) 0\<rbrakk> M e) \<or> (\<exists>t. action t \<in> ((\<alpha>\<^sub>_el a) - \<alpha>\<^sub>f) \<and> t \<in> transition M \<and> source t = s' \<and> target t \<in> S')) ))"
   apply (subst Diamondmatch)
   apply (simp add: assms)
   apply (subst matchrepeatact)
   apply (simp del: Diamond.simps add: assms enabledactions_def)
+  apply (subst shiftdowncoro; simp add: assms)
   apply fastforce
   done 
+
+lemma todo :
+  assumes "finite (-\<alpha>\<^sub>f) \<and> finite \<alpha>\<^sub>e \<and> (\<forall>a. finite (\<alpha>\<^sub>_el a)) \<and> finite (-B)"
+  and "\<forall>a. \<not>(occursvari (\<phi>_off a) 0)"
+  and "\<forall>a. \<not>(occursvari (\<phi>_on a) 0)"
+  and "\<forall>p s. (\<exists>s'. validfinpath M s p s' \<and> P s (fin p)) = progressing M s B (fin p)"
+  and "\<forall>p s. validinfpath M s p \<longrightarrow> (P s (inf p) = (\<exists>a \<in> -B. ((\<forall>i. (source (p i)) \<in> \<lbrakk>shiftdown (\<phi>_on a) 0\<rbrakk> M e \<longrightarrow> (\<exists>j\<ge>i. action (p j) \<in> \<alpha>_el a \<or> target (p j) \<in> \<lbrakk>shiftdown (\<phi>_off a) 0\<rbrakk> M e) ))))"
+  and "\<forall>s. (locked M B s = (\<forall> act \<in> -B. s \<notin> \<lbrakk>shiftdown (\<phi>_on act) 0\<rbrakk> M e))"
+  and "\<forall>s. \<forall>a \<in> -B. s \<in> \<lbrakk>shiftdown (\<phi>_on act) 0\<rbrakk> M e \<longrightarrow> s \<notin> \<lbrakk>shiftdown (\<phi>_off act) 0\<rbrakk> M e " 
+  and "\<forall>s p s'. validfinpath M s p s' \<longrightarrow> ((\<exists>finextension s''. validfinpath M s (p @ finextension) s'' \<and> locked M B s'') \<or> (\<exists>infextension. validinfpath M s (conc p infextension) \<and> P s (inf (conc p infextension))))"
+  shows "s \<in> \<lbrakk>nu (And (-B) (\<lambda>a. or (neg (\<phi>_on a)) (Diamond (repeat (acts (-\<alpha>\<^sub>f))) (or (or (Diamond (acts \<alpha>\<^sub>e) tt) (and' (\<phi>_off a) (var 0))) (Diamond (acts ((\<alpha>\<^sub>_el a) -\<alpha>\<^sub>f)) (var 0))))))\<rbrakk> M e 
+    = (\<exists>p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> P s p)"
+  apply (simp add: assms del: Diamond.simps freeuntiloccurrence.simps)
+  apply (subst lemma50; simp add: assms del: freeuntiloccurrence.simps)
+  apply (subst shiftdowncoro; simp add: assms del: freeuntiloccurrence.simps)
+  apply (rule iffI)
+proof-
+  assume "\<exists>S'. S' \<subseteq> (\<Inter>act\<in>- B. {s. s \<in> \<lbrakk>shiftdown (\<phi>_on act) 0\<rbrakk> M e \<longrightarrow> (\<exists>p s'. validfinpath M s p s' \<and> action ` set p \<subseteq> - \<alpha>\<^sub>f \<and> ((\<exists>a'\<in>\<alpha>\<^sub>e. a' \<in> enabledactions M s') \<or> s' \<in> S' \<and> s' \<in> \<lbrakk>shiftdown (\<phi>_off act) 0\<rbrakk> M e \<or> (\<exists>a aa. aa \<in> \<alpha>\<^sub>_el act \<and> aa \<notin> \<alpha>\<^sub>f \<and> (\<exists>b. (a, aa, b) \<in> transition M \<and> a = s' \<and> b \<in> S'))))}) \<and> s \<in> S'"
+  from this obtain S' where assum1: "S' \<subseteq> (\<Inter>act\<in>- B. {s. s \<in> \<lbrakk>shiftdown (\<phi>_on act) 0\<rbrakk> M e \<longrightarrow> (\<exists>p s'. validfinpath M s p s' \<and> action ` set p \<subseteq> - \<alpha>\<^sub>f \<and> ((\<exists>a'\<in>\<alpha>\<^sub>e. a' \<in> enabledactions M s') \<or> s' \<in> S' \<and> s' \<in> \<lbrakk>shiftdown (\<phi>_off act) 0\<rbrakk> M e \<or> (\<exists>a aa. aa \<in> \<alpha>\<^sub>_el act \<and> aa \<notin> \<alpha>\<^sub>f \<and> (\<exists>b. (a, aa, b) \<in> transition M \<and> a = s' \<and> b \<in> S'))))}) \<and> s \<in> S'" by auto
+  have "(\<forall> act \<in> -B. s \<notin> \<lbrakk>shiftdown (\<phi>_on act) 0\<rbrakk> M e) \<or> (\<exists>act \<in> -B. s \<in> \<lbrakk>shiftdown (\<phi>_on act) 0\<rbrakk> M e)" by auto
+  moreover {
+    assume "\<forall> act \<in> -B. s \<notin> \<lbrakk>shiftdown (\<phi>_on act) 0\<rbrakk> M e"
+    hence "freeuntiloccurrence (fin []) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B (fin [])" by (simp add: assms)
+    hence "freeuntiloccurrence (fin []) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B (fin []) \<and> P s (fin [])" using assms(4) by blast
+  }
+  moreover {
+    assume "(\<exists>act \<in> -B. s \<in> \<lbrakk>shiftdown (\<phi>_on act) 0\<rbrakk> M e)"
+    from this obtain act where assum2: "act \<in> -B \<and> s \<in> \<lbrakk>shiftdown (\<phi>_on act) 0\<rbrakk> M e" by auto
+    hence "\<exists>p s'. validfinpath M s p s' \<and> action ` set p \<subseteq> - \<alpha>\<^sub>f \<and> ((\<exists>a'\<in>\<alpha>\<^sub>e. a' \<in> enabledactions M s') \<or> s' \<in> S' \<and> s' \<in> \<lbrakk>shiftdown (\<phi>_off act) 0\<rbrakk> M e \<or> (\<exists>a aa. aa \<in> \<alpha>\<^sub>_el act \<and> aa \<notin> \<alpha>\<^sub>f \<and> (\<exists>b. (a, aa, b) \<in> transition M \<and> a = s' \<and> b \<in> S')))" using assum1 by auto
+    from this obtain p s' where "validfinpath M s p s' \<and> action ` set p \<subseteq> - \<alpha>\<^sub>f \<and> ((\<exists>a'\<in>\<alpha>\<^sub>e. a' \<in> enabledactions M s') \<or> s' \<in> S' \<and> s' \<in> \<lbrakk>shiftdown (\<phi>_off act) 0\<rbrakk> M e \<or> (\<exists>a aa. aa \<in> \<alpha>\<^sub>_el act \<and> aa \<notin> \<alpha>\<^sub>f \<and> (\<exists>b. (a, aa, b) \<in> transition M \<and> a = s' \<and> b \<in> S')))" by metis
+    hence "(validfinpath M s p s' \<and> action ` set p \<subseteq> - \<alpha>\<^sub>f \<and> (\<exists>a'\<in>\<alpha>\<^sub>e. a' \<in> enabledactions M s')) \<or> (validfinpath M s p s' \<and> action ` set p \<subseteq> - \<alpha>\<^sub>f \<and> (s' \<in> S' \<and> s' \<in> \<lbrakk>shiftdown (\<phi>_off act) 0\<rbrakk> M e) \<or> (\<exists>a aa. aa \<in> \<alpha>\<^sub>_el act \<and> aa \<notin> \<alpha>\<^sub>f \<and> (\<exists>b. (a, aa, b) \<in> transition M \<and> a = s' \<and> b \<in> S')))" by simp
+    moreover {
+      assume assum3: "validfinpath M s p s' \<and> action ` set p \<subseteq> -\<alpha>\<^sub>f \<and> (\<exists>a'\<in>\<alpha>\<^sub>e. a' \<in> enabledactions M s')"
+      from this obtain t where assum4: "source t = s' \<and> action t \<in> \<alpha>\<^sub>e \<and> t \<in> transition M" by (auto simp: enabledactions_def)
+      hence "validfinpath M s p s' \<and> validfinpath M s' [t] (target t)" using assum3 by simp
+      hence "validfinpath M s (p @ [t]) (target t)" using validfinpathsplit by metis
+      hence "((\<exists>finextension s''. validfinpath M s ((p @ [t]) @ finextension) s'' \<and> locked M B s'') \<or> (\<exists>infextension. validinfpath M s (conc (p @ [t]) infextension) \<and> P s (inf (conc (p @ [t]) infextension))))" using assms(8) by metis
+      hence "((\<exists>finextension s''. validfinpath M s ((p @ [t]) @ finextension) s'' \<and> (\<not>(occurs \<alpha>\<^sub>f (fin (take (length p) ((p @ [t]) @ finextension)))) \<and> action (((p @ [t]) @ finextension)!(length p)) \<in> \<alpha>\<^sub>e) \<and> locked M B s'') \<or> (\<exists>infextension. validinfpath M s (conc (p @ [t]) infextension) \<and> ((\<not>(occurs \<alpha>\<^sub>f (fin (prefix (length p) (conc (p @ [t]) infextension)))) \<and> action ((conc (p @ [t]) infextension) (length p)) \<in> \<alpha>\<^sub>e)) \<and> P s (inf (conc (p @ [t]) infextension))))" using assum3 assum4 by fastforce
+      hence "((\<exists>finextension s''. validfinpath M s ((p @ [t]) @ finextension) s'' \<and> (\<exists>i. \<not>(occurs \<alpha>\<^sub>f (fin (take i ((p @ [t]) @ finextension)))) \<and> action (((p @ [t]) @ finextension)!i) \<in> \<alpha>\<^sub>e) \<and> locked M B s'') \<or> (\<exists>infextension. validinfpath M s (conc (p @ [t]) infextension) \<and> (\<exists>i. (\<not>(occurs \<alpha>\<^sub>f (fin (prefix i (conc (p @ [t]) infextension)))) \<and> action ((conc (p @ [t]) infextension) i) \<in> \<alpha>\<^sub>e)) \<and> P s (inf (conc (p @ [t]) infextension))))" by metis
+      hence "((\<exists>finextension s''. validfinpath M s ((p @ [t]) @ finextension) s'' \<and> freeuntiloccurrence (fin ((p @ [t]) @ finextension)) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> locked M B s'') \<or> (\<exists>infextension. validinfpath M s (conc (p @ [t]) infextension) \<and> freeuntiloccurrence (inf (conc (p @ [t]) infextension)) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> P s (inf (conc (p @ [t]) infextension))))" unfolding freeuntiloccurrence.simps ind.simps pref.simps by blast
+      hence "(\<exists>p s'. validfinpath M s p s' \<and> freeuntiloccurrence (fin p) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> locked M B s') \<or> (\<exists>p. validinfpath M s p \<and> freeuntiloccurrence (inf p) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> P s (inf p))" by blast
+      hence "(\<exists>p s'. freeuntiloccurrence (fin p) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B (fin p)) \<or> (\<exists>p. freeuntiloccurrence (inf p) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B (inf p) \<and> P s (inf p))" by auto
+      hence "\<exists>p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e  \<and> progressing M s B p \<and> P s p" using assms(4) by metis
+    }
+    moreover {
+      assume "validfinpath M s p s' \<and> action ` set p \<subseteq> - \<alpha>\<^sub>f \<and> (s' \<in> S' \<and> s' \<in> \<lbrakk>shiftdown (\<phi>_off act) 0\<rbrakk> M e) \<or> (\<exists>a aa. aa \<in> \<alpha>\<^sub>_el act \<and> aa \<notin> \<alpha>\<^sub>f \<and> (\<exists>b. (a, aa, b) \<in> transition M \<and> a = s' \<and> b \<in> S'))"
+      hence "\<exists>p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e  \<and> progressing M s B p \<and> P s p" by sorry
+    }
+    ultimately have "\<exists>p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e  \<and> progressing M s B p \<and> P s p" by auto
+  }
+  ultimately show "\<exists>p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e  \<and> progressing M s B p \<and> P s p" by blast
+next
+  show "\<exists>p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> P s p \<Longrightarrow> \<exists>x. x \<subseteq> (\<Inter>xa\<in>- B. {s. s \<in> \<lbrakk>shiftdown (\<phi>_on xa) 0\<rbrakk> M e \<longrightarrow> (\<exists>p s'. validfinpath M s p s' \<and> action ` set p \<subseteq> - \<alpha>\<^sub>f \<and> ((\<exists>a'\<in>\<alpha>\<^sub>e. a' \<in> enabledactions M s') \<or> s' \<in> x \<and> s' \<in> \<lbrakk>shiftdown (\<phi>_off xa) 0\<rbrakk> M e \<or> (\<exists>a aa. aa \<in> \<alpha>\<^sub>_el xa \<and> aa \<notin> \<alpha>\<^sub>f \<and> (\<exists>b. (a, aa, b) \<in> transition M \<and> a = s' \<and> b \<in> x))))}) \<and> s \<in> x" by sorry
+qed
+
+
+lemma theorem24 :
+  assumes "finite (-\<alpha>\<^sub>f) \<and> finite \<alpha>\<^sub>e \<and> (\<forall>a. finite (\<alpha>\<^sub>_el a)) \<and> finite (-B)"
+  and "finitereg \<rho>"
+
+  and "\<forall>a. \<not>(occursvari (\<phi>_off a) 0)"
+  and "\<forall>a. \<not>(occursvari (\<phi>_on a) 0)"
+  and "\<forall>p s. (\<exists>s'. validfinpath M s p s' \<and> P s (fin p)) = progressing M s B (fin p)"
+  and "\<forall>p s. validinfpath M s p \<longrightarrow> (P s (inf p) = (\<exists>a \<in> -B. ((\<forall>i. (source (p i)) \<in> \<lbrakk>shiftdown (\<phi>_on a) 0\<rbrakk> M e \<longrightarrow> (\<exists>j\<ge>i. action (p j) \<in> \<alpha>_el a \<or> target (p j) \<in> \<lbrakk>shiftdown (\<phi>_off a) 0\<rbrakk> M e) ))))"
+  and "\<forall>s. (locked M B s = (\<forall> act \<in> -B. s \<notin> \<lbrakk>shiftdown (\<phi>_on act) 0\<rbrakk> M e))"
+  and "\<forall>s. \<forall>a \<in> -B. s \<in> \<lbrakk>shiftdown (\<phi>_on act) 0\<rbrakk> M e \<longrightarrow> s \<notin> \<lbrakk>shiftdown (\<phi>_off act) 0\<rbrakk> M e " 
+  and "\<forall>s p s'. validfinpath M s p s' \<longrightarrow> ((\<exists>finextension s''. validfinpath M s (p @ finextension) s'' \<and> locked M B s'') \<or> (\<exists>infextension. validinfpath M s (conc p infextension) \<and> P s (inf (conc p infextension))))"
+
+  shows "s \<in> \<lbrakk>neg (Diamond \<rho> (nu (And (-B) (\<lambda>a. or (neg (\<phi>_on a)) (Diamond (repeat (acts (-\<alpha>\<^sub>f))) (or (or (Diamond (acts \<alpha>\<^sub>e) tt) (and' (\<phi>_off a) (var 0))) (Diamond (acts ((\<alpha>\<^sub>_el a) -\<alpha>\<^sub>f)) (var 0))))))))\<rbrakk> M e =
+  (\<nexists>p. violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> P s p)"
+proof-
+  have res1: "\<forall>s. (s \<in> \<lbrakk>Diamond \<rho> (nu (And (-B) (\<lambda>a. or (neg (\<phi>_on a)) (Diamond (repeat (acts (-\<alpha>\<^sub>f))) (or (or (Diamond (acts \<alpha>\<^sub>e) tt) (and' (\<phi>_off a) (var 0))) (Diamond (acts ((\<alpha>\<^sub>_el a) -\<alpha>\<^sub>f)) (var 0)))))))\<rbrakk> M e =
+  (\<exists>p. violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e \<and>  progressing M s B p \<and> P s p))"
+    apply (subst Diamondmatch)
+    apply (simp add: assms(2))
+    apply (subst splitviolating'[where ?\<phi>_on="\<phi>_on" and ?\<phi>_off="\<phi>_off" and ?\<alpha>_el="\<alpha>_el" and ?e="e"])
+    using assms(5) apply blast
+    apply (simp add: assms)
+    apply (subst todo [where P="P" and ?\<phi>_on="\<phi>_on" and ?\<phi>_off="\<phi>_off" and ?\<alpha>_el="\<alpha>_el"and ?e="e" and ?act = "act"])
+    apply (simp add: assms)
+    apply (simp add: assms)
+    apply (simp add: assms)
+    using assms(5) apply blast
+    using assms(6) apply blast
+    apply (simp add: assms)
+    apply (simp add: assms)
+    using assms(9) apply blast
+    apply fastforce
+    done
+  thus ?thesis by (subst negformula; blast)
+qed

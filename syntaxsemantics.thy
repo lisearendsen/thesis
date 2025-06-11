@@ -8,6 +8,9 @@ datatype 'a regularformula =
   union "'a regularformula" "'a regularformula" | 
   repeat "'a regularformula"
 
+text \<open>A regular formula is finite if and only if all sets of actions occurring in the 
+formula are finite.\<close>
+
 fun finitereg :: "'a regularformula \<Rightarrow> bool" where
 "finitereg eps = True" |
 "finitereg (acts A) = finite A" |
@@ -32,15 +35,21 @@ lemma conclem'' : "(map f ab \<in> A@@B) = (\<exists>a b. ab = a@b \<and> (map f
   apply (metis conclem map_append)
   done
 
-overloading form_pow == "compow :: nat \<Rightarrow> 'a list set \<Rightarrow> 'a list set"
+text \<open>Define powers on regular formulas to describe the language of the repeat operator.\<close>
+
+overloading
+  formpow \<equiv> "compow :: nat \<Rightarrow> 'a list set \<Rightarrow> 'a list set"
 begin
-  primrec form_pow :: "nat \<Rightarrow> 'a list set \<Rightarrow> 'a list set" where
-  "form_pow 0 A = {[]}" |
-  "form_pow (Suc n) A = A @@ (form_pow n A)"
+  fun formpow :: "nat \<Rightarrow>'a list set \<Rightarrow> 'a list set"
+  where
+    "formpow 0 A = {[]}" |
+    "formpow (Suc n) A = A @@ (formpow n A)"
 end
 
-definition form_pow :: "nat \<Rightarrow> 'a list set \<Rightarrow> 'a list set" where
-  form_pow [code_abbrev]: "form_pow = compow"
+definition formpow :: "nat \<Rightarrow> 'a list set \<Rightarrow> 'a list set" where
+  formpow [code_abbrev]: "formpow = compow"
+
+text \<open>Now the language of a regular formula can be defined.\<close>
 
 fun regformtolanguage :: "'a regularformula \<Rightarrow> 'a list set" where
 "regformtolanguage eps = {[]}" |
@@ -51,7 +60,10 @@ fun regformtolanguage :: "'a regularformula \<Rightarrow> 'a list set" where
 
 value "regformtolanguage (eps) :: nat list set" 
 value "regformtolanguage (acts {}) :: nat list set" 
-value "regformtolanguage (after (acts {1, 2}) (acts {3, 4})) :: nat list set" 
+value "regformtolanguage (after (acts {1, 2}) (acts {3, 4})) :: nat list set"
+
+text \<open>A mu calculus formula is defined on a type of actions \<open>'a\<close>,
+and de Bruijn indices are used as variables.\<close>
 
 datatype 'a formula =
   tt | ff | var nat |
@@ -66,12 +78,19 @@ datatype 'a formula =
 value "diamond 2 (box 1 tt) :: nat formula"
 value "nu (var 0) :: nat formula "
 
+text \<open>Similarly a labeled transition system is defined on a type of actions \<open>'a\<close> 
+and a type of states \<open>'s\<close> (instead of a set of actions and a set of states).
+A labeled transition system then consists of a set of transitions and a set of initial states.\<close>
+
+(*maybe remove set of initial states*)
 record ('a, 's) lts =
 transition :: "('s * 'a * 's) set"
 initial :: "'s set"
 
 datatype example_states = s\<^sub>0 | s\<^sub>1
 datatype example_actions = \<a> | \<b>
+
+text \<open>A record can be instantiated as follows.\<close>
 
 definition example_lts :: "(example_actions, example_states) lts" where
 "example_lts \<equiv> \<lparr>transition = {(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0), (s\<^sub>1, \<a>, s\<^sub>1)}, initial = {s\<^sub>0}\<rparr>"
@@ -80,53 +99,36 @@ fun newenvironment :: "(nat \<Rightarrow> 's set) \<Rightarrow> 's set \<Rightar
 "newenvironment e S 0 = S" |
 "newenvironment e S (Suc n) = e n"
 
+text \<open>Some simplifications for \<open>newenvironment\<close>.\<close>
+
 lemma newenvironmentsuccessorcomplement [simp] : 
 "(newenvironment e S)((Suc i) := - ((newenvironment e S) (Suc i))) = newenvironment (e(i := - e i)) S"
-proof
-  fix n
-  show "((newenvironment e S) (Suc i := - newenvironment e S (Suc i))) n = newenvironment (e(i := - e i)) S n"
-    apply (induct n)
-    apply (simp_all)
-    done
-qed
+  apply (rule)
+  apply (induct_tac x; simp)
+  done
 
 lemma newenvironmentzerocomplement [simp] : 
 "(newenvironment e S)(0 := (-(newenvironment e S) 0)) = (newenvironment e (-S))"
-proof
-  fix n
-  show "((newenvironment e S)(0 := ((-(newenvironment e S) 0)))) n  = (newenvironment e (-S)) n "
-    apply (induct n)
-    apply (simp_all)
-    done
-qed
+  apply (rule)
+  apply (induct_tac x; simp)
+  done
 
 lemma newenvironmentswitchsuccessor [simp] : 
 "newenvironment (e(i :=  S')) S'' = (newenvironment e S'')((Suc i) := S')"
-proof
-  fix n
-  show "(newenvironment (e(i :=  S')) S'') n = ((newenvironment e S'')((Suc i) := S')) n"
-    apply (induct n)
-    apply (simp_all)
-    done
-qed
+  apply (rule)
+  apply (induct_tac x; simp)
+  done
 
 lemma newenvironmentswitchzero [simp] : 
 "(newenvironment e S'')(0 := S') = newenvironment e S'"
-proof
-  fix n
-  show "((newenvironment e S'')(0 := S')) n = newenvironment e S' n"
-    apply (induct n)
-    apply (simp_all)
-    done
-qed
-
-lemma newenvironmentshift [simp] : 
-"X > 0 \<longrightarrow> (newenvironment e S') X = e (X - Suc 0)"
-  apply (induct_tac X)
-  apply (simp_all)
+  apply (rule)
+  apply (induct_tac x; simp)
   done
 
-fun formulasemantics :: "'a formula  \<Rightarrow> ('a, 's) lts \<Rightarrow> (nat \<Rightarrow> 's set) \<Rightarrow> 's set" (\<open>\<lbrakk>_\<rbrakk> _ _\<close> [80, 80, 80] 80) 
+lemma newenvironmentshift [simp] : 
+"X > 0 \<longrightarrow> (newenvironment e S') X = e (X - Suc 0)" by (induct_tac X; simp)
+
+fun formulasemantics :: "'a formula  \<Rightarrow> ('a, 's) lts \<Rightarrow> (nat \<Rightarrow> 's set) \<Rightarrow> 's set" (\<open>\<lbrakk>_\<rbrakk> _ _\<close> [80, 80, 80] 80)
 where 
   "\<lbrakk>tt\<rbrakk> M e = UNIV " |
   "\<lbrakk>ff\<rbrakk> M e =  {}" |
@@ -138,6 +140,8 @@ where
   "\<lbrakk>box act f\<rbrakk> M e = {s. \<forall> s'. (s, act, s') \<in> (transition M) \<longrightarrow>  s'\<in> \<lbrakk>f\<rbrakk> M e}" |
   "\<lbrakk>nu f\<rbrakk> M e = \<Union> {S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}" |
   "\<lbrakk>mu f\<rbrakk> M e = \<Inter> {S'. S' \<supseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}"
+
+text \<open>Proving formulas on the example as given before.\<close>
 
 lemma "\<lbrakk>box \<a> ff\<rbrakk> example_lts e = {s\<^sub>0}"
   apply (simp add: example_lts_def)
@@ -334,11 +338,11 @@ where
   "(occursvari (mu f) i) = (occursvari f (Suc i))"
 
 fun emptyreg :: "'a regularformula \<Rightarrow> bool" where
-"emptyreg eps = False" | 
-"emptyreg (acts A) = (A = {})" |
-"emptyreg (after R Q) = (emptyreg R \<or> emptyreg Q)" |
-"emptyreg (union R Q) = (emptyreg R \<and> emptyreg Q)" | 
-"emptyreg (repeat R) = False"
+  "emptyreg eps = False" | 
+  "emptyreg (acts A) = (A = {})" |
+  "emptyreg (after R Q) = (emptyreg R \<or> emptyreg Q)" |
+  "emptyreg (union R Q) = (emptyreg R \<and> emptyreg Q)" | 
+  "emptyreg (repeat R) = False"
 
 lemma occursvarishiftup : "m \<le> i \<Longrightarrow> occursvari (shiftup f m) (Suc i) = occursvari f i"
   by (induct f arbitrary : i m; simp)
@@ -468,7 +472,7 @@ lemma transformerdef : "transformer f M e = (\<lambda>S'. \<lbrakk>f\<rbrakk> M 
   by (meson transformer_def)
 
 lemma notdependsmono : "\<not>dependvari f M i \<Longrightarrow>
-  mono (\<lambda>S.(formulasemantics f M (e(i := S)))) \<and> antimono (\<lambda>S.(formulasemantics f M (e(i := S))))"
+  mono (\<lambda>S.(\<lbrakk>f\<rbrakk> M (e(i := S)))) \<and> antimono (\<lambda>S.(\<lbrakk>f\<rbrakk> M (e(i := S))))"
   by (induct f arbitrary: i; simp add: dependvari_def monotone_def)
 
 lemma notdependscoro : "(\<not>dependvari f M 0 \<longrightarrow> mono (transformer f M e))"
@@ -522,20 +526,48 @@ where
   "(notdependalloccursposnegi tt M i b) = True " |
   "(notdependalloccursposnegi ff M i b) = True" |
   "(notdependalloccursposnegi (var X) M i b) = ((X \<noteq> i) \<or> b)" |
-  "(notdependalloccursposnegi (neg f) M i b) = (notdependalloccursposnegi f M i (\<not>b) \<or> \<not>dependvari f M i)" |
-  "(notdependalloccursposnegi (and' f f') M i b) = ((notdependalloccursposnegi f M i b \<or> \<not>dependvari f M i) \<and> (notdependalloccursposnegi f' M i b \<or> \<not>dependvari f' M i))" |
-  "(notdependalloccursposnegi (or f f') M i b) = ((notdependalloccursposnegi f M i b \<or> \<not>dependvari f M i) \<and> (notdependalloccursposnegi f' M i b \<or> \<not>dependvari f' M i))" |
-  "(notdependalloccursposnegi (diamond act f) M i b) = (notdependalloccursposnegi f M i b \<or> \<not>dependvari f M i) " |
-  "(notdependalloccursposnegi (box act f) M i b) = (notdependalloccursposnegi f M i b \<or> \<not>dependvari f M i)" |
-  "(notdependalloccursposnegi (nu f) M i b) = (notdependalloccursposnegi f M (Suc i) b \<or> \<not>dependvari f M i)" |
-  "(notdependalloccursposnegi (mu f) M i b) = (notdependalloccursposnegi f M (Suc i) b \<or> \<not>dependvari f M i)"
+  "(notdependalloccursposnegi (neg f) M i b) = (\<not>dependvari f M i \<or> notdependalloccursposnegi f M i (\<not>b))" |
+  "(notdependalloccursposnegi (and' f f') M i b) = (\<not>dependvari (and' f f') M i \<or> (notdependalloccursposnegi f M i b \<and> notdependalloccursposnegi f' M i b))" |
+  "(notdependalloccursposnegi (or f f') M i b) = (\<not>dependvari (or f f') M i \<or> (notdependalloccursposnegi f M i b \<and> notdependalloccursposnegi f' M i b))" |
+  "(notdependalloccursposnegi (diamond act f) M i b) = (\<not>dependvari (diamond act f) M i \<or> notdependalloccursposnegi f M i b) " |
+  "(notdependalloccursposnegi (box act f) M i b) = (\<not>dependvari (box act f) M i \<or> notdependalloccursposnegi f M i b)" |
+  "(notdependalloccursposnegi (nu f) M i b) = (\<not>dependvari (nu f) M i \<or> notdependalloccursposnegi f M (Suc i) b)" |
+  "(notdependalloccursposnegi (mu f) M i b) = (\<not>dependvari (mu f) M i \<or> notdependalloccursposnegi f M (Suc i) b)"
 
 lemma alloccursposnegnotdepends : "alloccursposnegi f i b \<Longrightarrow> notdependalloccursposnegi f M i b"
   by (induct f arbitrary : i b; simp)
 
-(*lemma monotonicitynotdepend :
+lemma dependvarineg : "dependvari f M i = dependvari (neg f) M i"
+  by (simp add: dependvari_def)
+
+lemma notdepends : "\<not>dependvari f M i \<Longrightarrow> notdependalloccursposnegi f M i b"
+  apply (induct f arbitrary : i b; simp add: dependvari_def)
+  apply (rule impI)
+  apply (subgoal_tac "({} :: 's set) = UNIV")
+  apply auto
+  done
+
+lemma monotonicitynotdepend :
 "(notdependalloccursposnegi f M i True \<longrightarrow> mono (\<lambda>S'.(formulasemantics f M (e(i := S')))))
  \<and> (notdependalloccursposnegi f M i False \<longrightarrow> antimono (\<lambda>S'.(formulasemantics f M (e(i := S')))))"
-proof-*)
+  (*apply (simp add: monotone_def)*)
+  apply (induct f arbitrary : i e)
+        prefer 4
+        unfolding notdependalloccursposnegi.simps
+        apply (subst dependvarineg)
+        apply (simp add: monotone_def dependvari_def)
+                prefer 6
+
+  unfolding notdependalloccursposnegi.simps
+  apply auto
+           apply (meti notdependsmono monotone_def alloccursposnegi.simps(8) boxsubset)
+  unfolding notdependalloccursposnegi.simps
+  apply (subst boxsubset)
+  (*apply (metis boxsubset dependvari_def equalityE
+      notdependalloccursposnegi.simps(8))
+  apply (meson alloccursposnegi.simps(8) boxsubset)
+  apply (induction f arbitrary : i e)
+  apply (simp_all add: monotone_def)*)
+proof-
 
 end
