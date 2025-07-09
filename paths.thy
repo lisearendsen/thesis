@@ -157,6 +157,17 @@ fun ind :: "nat \<Rightarrow> ('a, 's) path \<Rightarrow> ('s \<times> 'a \<time
 "ind i (fin p) = p!i" |
 "ind i (inf p) = p i"
 
+definition laststate :: "('a, 's) finpath \<Rightarrow> 's" where
+"laststate p = (target (p ! (length p - Suc 0)))"
+
+lemma laststatesimps [simp]:
+  shows "p = [] \<Longrightarrow> laststate (t # p) = target t "
+  and "p \<noteq> [] \<Longrightarrow> laststate (t # p) = laststate p"
+unfolding laststate_def by simp_all
+
+lemma laststatedrop [simp] : "j < length p \<Longrightarrow> laststate (drop j p) = laststate p"
+  unfolding laststate_def by simp
+
 lemma prefixleft : "(prefix (Suc n) p) = (p 0)#(prefix n (suffix (Suc 0) p))"
   by (induct n; simp)
 
@@ -235,6 +246,16 @@ proof-
   thus ?thesis by simp
 qed
 
+lemma occursstatefinright : "p \<noteq> [] \<and> occursstate S' (laststate p) (fin p') \<Longrightarrow> occursstate S' s (fin (p @ p'))"
+proof-
+  assume "p \<noteq> [] \<and> occursstate S' (laststate p) (fin p')"
+  moreover have "p \<noteq> [] \<longrightarrow> laststate p \<in> (insert s (set (map target (p @ p'))))" 
+    apply (induct p; simp)
+    using laststatesimps apply metis
+    done
+  ultimately show ?thesis by auto
+qed
+
 lemma occursstateinf : "occursstate S' s (fin p) \<Longrightarrow> occursstate S' s (inf (conc p p'))"
   using infinpath_then_ininfpath occursstate.simps by metis
 
@@ -286,7 +307,7 @@ qed
 
 lemma validinfpathoccursstate : "validinfpath M s p \<Longrightarrow> occursstate S' s (inf p) = (\<exists>n. source (p n) \<in> S')"
   apply simp
-  using  not0_implies_Suc validinfpath_def apply metis
+  using not0_implies_Suc validinfpath_def apply metis
   done
 
 fun indicespath :: "('a, 's) path \<Rightarrow> nat set" where
@@ -453,20 +474,23 @@ fun concfinpaths :: "('s \<Rightarrow> ('a, 's) finpath) \<Rightarrow> 's \<Righ
 "concfinpaths succ s 0 = succ s" | 
 "concfinpaths succ s (Suc n) = succ (target ((concfinpaths succ s n)!(length (concfinpaths succ s n) - Suc 0)))"
 
-lemma validfinpathtarget : "p \<noteq> [] \<and> validfinpath M s p s' \<longrightarrow> s' = target (p!(length p - Suc 0))"
+lemma validfinpathlaststate : "p \<noteq> [] \<and> validfinpath M s p s' \<longrightarrow> s' = laststate p"
   apply (induct p arbitrary : s; simp)
 proof
   fix t p s
-  assume IH : "\<And>s. p \<noteq> [] \<and> validfinpath M s p s' \<longrightarrow> s' = target (p ! (length p - Suc 0))"
-  assume assum1: "s = source t \<and> t \<in> transition M \<and> validfinpath M (target t) p s'"
-  have "p = [] \<Longrightarrow> s' = target ((t # p) ! length p)" using assum1 by auto
-  moreover have "length p > 0 \<Longrightarrow> s' = target ((t # p) ! length p)" using IH assum1 by auto
-  ultimately show "s' = target ((t # p) ! length p)" by blast
+  assume IH : "\<And>s. p \<noteq> [] \<and> validfinpath M s p s' \<longrightarrow> s' = laststate p"
+  assume assum1:  "s = source t \<and> t \<in> transition M \<and> validfinpath M (target t) p s'"
+  hence "p = [] \<Longrightarrow> s' = laststate (t # p)" by simp
+  moreover have "p \<noteq> [] \<Longrightarrow> s' = laststate (t # p)" using IH assum1 by auto
+  ultimately show "s' = laststate (t # p)" by blast
 qed
+
+lemma validinfpathsplitlaststate : "p \<noteq> []  \<Longrightarrow> (validfinpath M s p (laststate p) \<and> validinfpath M (laststate p) p') = validinfpath M s (conc p p')"
+  using validinfpathsplit validfinpathlaststate by metis
 
 (*use let with a*)
 function recursiveconcpaths :: "('s \<Rightarrow> ('a, 's) finpath) \<Rightarrow> 's \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> 's \<times> 'a \<times> 's" where
-"recursiveconcpaths succ s a n = (if succ s = [] then (s, a, s) else (if n < length (succ s) then (succ s)!n else (recursiveconcpaths succ (target ((succ s)!(length (succ s) - Suc 0))) a (n - length (succ s)))))"
+"recursiveconcpaths succ s a n = (if succ s = [] then (s, a, s) else (if n < length (succ s) then (succ s)!n else (recursiveconcpaths succ (laststate (succ s)) a (n - length (succ s)))))"
   by auto
 termination 
   apply (relation "measure (\<lambda>(succ,s,a, n). n)")
@@ -478,31 +502,33 @@ termination
 
 fun ithpath :: "('s \<Rightarrow> ('a, 's) finpath) \<Rightarrow> 's \<Rightarrow> nat \<Rightarrow> ('a, 's) finpath" where
 "ithpath succ s 0 = succ s" |
-"ithpath succ s (Suc i) = succ (target ((ithpath succ s i)!(length (ithpath succ s i) - Suc 0)))"
+"ithpath succ s (Suc i) = succ (laststate (ithpath succ s i))"
 
 fun concipaths :: "('s \<Rightarrow> ('a, 's) finpath) \<Rightarrow> 's \<Rightarrow> nat \<Rightarrow> ('a, 's) finpath" where
 "concipaths succ s 0 = []" |
-"concipaths succ s (Suc i) = succ s @ concipaths succ (target ((succ s) !(length (succ s) - Suc 0))) i"
+"concipaths succ s (Suc i) = succ s @ concipaths succ (laststate (succ s)) i"
 
+
+(*maybe def for nth laststate and then do this for recursiveconcpaths too*)
 lemma concipathseqithpath : "concipaths succ s (Suc i) = concipaths succ s i @ ithpath succ s i"
   apply (induct i arbitrary : s; simp)
 proof-
   fix i s
-  assume IH : "(\<And>s. succ s @ concipaths succ (target (succ s ! (length (succ s) - Suc 0))) i = concipaths succ s i @ ithpath succ s i)"
-  hence "succ s @ concipaths succ (target (succ s ! (length (succ s) - Suc 0))) i @ ithpath succ (target (succ s ! (length (succ s) - Suc 0))) i =  concipaths succ s i @ ithpath succ s i @ ithpath succ (target (succ s ! (length (succ s) - Suc 0))) i" by auto
-  moreover have "ithpath succ (target (succ s ! (length (succ s) - Suc 0))) i = ithpath succ s (Suc i)" by (induct i; simp)
-  ultimately show "succ s @ concipaths succ (target (succ s ! (length (succ s) - Suc 0))) i @ ithpath succ (target (succ s ! (length (succ s) - Suc 0))) i = concipaths succ s i @ ithpath succ s i @ succ (target (ithpath succ s i ! (length (ithpath succ s i) - Suc 0)))" by auto
+  assume IH : "(\<And>s. succ s @ concipaths succ (laststate (succ s)) i = concipaths succ s i @ ithpath succ s i)"
+  hence "succ s @ concipaths succ (laststate (succ s)) i @ ithpath succ (target (succ s ! (length (succ s) - Suc 0))) i =  concipaths succ s i @ ithpath succ s i @ ithpath succ (target (succ s ! (length (succ s) - Suc 0))) i" by auto
+  moreover have "ithpath succ (laststate (succ s)) i = ithpath succ s (Suc i)" by (induct i; simp)
+  ultimately show "succ s @ concipaths succ (laststate (succ s)) i @ ithpath succ (laststate (succ s)) i = concipaths succ s i @ ithpath succ s i @ succ (laststate (ithpath succ s i))" by auto
 qed
 
 (*maybe do for source too and then that target eq source*)
 lemma targetinS' : 
-  assumes "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (target ((succ s) ! (length (succ s) - Suc 0))) \<in> S')"
-  shows "target (ithpath succ s i ! (length (ithpath succ s i) - Suc 0)) \<in> S'"
+  assumes "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S')"
+  shows "laststate (ithpath succ s i) \<in> S'"
   by (induct i; simp add: assms)
 
-lemma existsprefixrecursivepath : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (target ((succ s) ! (length (succ s) - Suc 0))) \<in> S') \<Longrightarrow> \<exists>!n. concipaths succ s i = prefix n (recursiveconcpaths succ s a)"
+lemma existsprefixrecursivepath : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S') \<Longrightarrow> \<exists>!n. concipaths succ s i = prefix n (recursiveconcpaths succ s a)"
 proof-
-  assume assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (target ((succ s) ! (length (succ s) - Suc 0))) \<in> S')"
+  assume assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S')"
   have "\<And>s. s \<in> S' \<Longrightarrow> (\<exists>!n. concipaths succ s i = prefix n (recursiveconcpaths succ s a))"
     apply (induct i arbitrary: s; simp)
   proof-
@@ -513,7 +539,7 @@ proof-
     ultimately show "\<exists>!n. [] = prefix n (recursiveconcpaths succ s a)" by (metis gr_zeroI)
   next
     fix i s
-    let ?s = "(target ((succ s)!(length (succ s) - Suc 0)))"
+    let ?s = "laststate (succ s)"
     assume "(\<And>s. s \<in> S' \<Longrightarrow> \<exists>!n. concipaths succ s i = prefix n (recursiveconcpaths succ s a))"
     moreover assume inS' : "s \<in> S'"
     ultimately have "\<exists>!n. concipaths succ ?s i = prefix n (recursiveconcpaths succ ?s a)" using assum1 by auto
@@ -541,14 +567,15 @@ proof-
       hence "length (prefix n (recursiveconcpaths succ s a)) = length (prefix n' (recursiveconcpaths succ s a))" by auto
       thus "n = n'" by auto
     qed
-    thus "\<exists>!n. succ s @ concipaths succ (target (succ s ! (length (succ s) - Suc 0))) i = prefix n (recursiveconcpaths succ s a)" using res1 by metis
+    thus "\<exists>!n. succ s @ concipaths succ (laststate (succ s)) i = prefix n (recursiveconcpaths succ s a)" using res1 by metis
   qed
   thus ?thesis using assum1 by auto
 qed
 
-lemma splitnextpathoroldpath : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (target ((succ s) ! (length (succ s) - Suc 0))) \<in> S') \<Longrightarrow> n < length (concipaths succ s i) \<Longrightarrow> recursiveconcpaths succ s a (Suc n) = (concipaths succ s i)!(Suc n) \<or> recursiveconcpaths succ s a (Suc n) = ithpath succ s i ! 0"
+(*this is not used*)
+lemma splitnextpathoroldpath : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S') \<Longrightarrow> n < length (concipaths succ s i) \<Longrightarrow> recursiveconcpaths succ s a (Suc n) = (concipaths succ s i)!(Suc n) \<or> recursiveconcpaths succ s a (Suc n) = ithpath succ s i ! 0"
 proof-
-  assume assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (target ((succ s) ! (length (succ s) - Suc 0))) \<in> S')"
+  assume assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S')"
   assume "n < length (concipaths succ s i)"
   hence "length (concipaths succ s i) = Suc n \<or> length (concipaths succ s i) > Suc n" by auto
   moreover {
@@ -574,13 +601,12 @@ proof-
   ultimately show "recursiveconcpaths succ s a (Suc n) = (concipaths succ s i)!(Suc n) \<or> recursiveconcpaths succ s a (Suc n) = ithpath succ s i ! 0" by blast
 qed
 
-lemma lengthithpath : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (target ((succ s) ! (length (succ s) - Suc 0))) \<in> S') \<Longrightarrow> length (ithpath succ s i) > 0"
-  apply (induct i; simp add: targetinS')
-  done
+lemma lengthithpath : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S') \<Longrightarrow> length (ithpath succ s i) > 0"
+  by (induct i; simp add: targetinS')
 
-lemma lengthconcipaths : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (target ((succ s) ! (length (succ s) - Suc 0))) \<in> S') \<Longrightarrow> (length (concipaths succ s i)) \<ge> i"
+lemma lengthconcipaths : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S') \<Longrightarrow> (length (concipaths succ s i)) \<ge> i"
 proof-
-  assume assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (target ((succ s) ! (length (succ s) - Suc 0))) \<in> S')"
+  assume assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S')"
   show "(length (concipaths succ s i)) \<ge> i"
     apply (induct i)
     apply simp
@@ -594,9 +620,9 @@ proof-
   qed
 qed
 
-lemma existsconcipaths : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (target ((succ s) ! (length (succ s) - Suc 0))) \<in> S') \<and> i \<ge> Suc n \<Longrightarrow> (concipaths succ s i) ! n = recursiveconcpaths succ s a n"
+lemma existsconcipaths : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S') \<and> i \<ge> Suc n \<Longrightarrow> (concipaths succ s i) ! n = recursiveconcpaths succ s a n"
 proof-
-  assume assum1: "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (target ((succ s) ! (length (succ s) - Suc 0))) \<in> S') \<and> i \<ge> Suc n"
+  assume assum1: "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S') \<and> i \<ge> Suc n"
   from this obtain n' where "concipaths succ s i = prefix n' (recursiveconcpaths succ s a)" using existsprefixrecursivepath by metis
   moreover have "length (concipaths succ s i) \<ge> Suc n" 
   proof-
@@ -607,11 +633,17 @@ proof-
   thus ?thesis by blast
 qed
 
+(*is not really needed as it can already be solved by auto*)
+lemma unfoldrecursiveconcpaths  : 
+  assumes "succ s \<noteq> []"
+  shows "recursiveconcpaths succ s a = conc (succ s) (recursiveconcpaths succ (laststate (succ s)) a)"     
+  using assms by auto
+
 (*make definitions for first and last state*)
 
 lemma source_eq_target : 
-  assumes "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (source ((succ s) ! 0)) = s \<and> (target ((succ s) ! (length (succ s) - Suc 0))) \<in> S')"
-  shows "target ((ithpath succ s n) ! (length (ithpath succ s n) - Suc 0)) \<in> S' \<and> source ((ithpath succ s (Suc n)) ! 0) = target ((ithpath succ s n) ! (length (ithpath succ s n) - Suc 0))"
+  assumes "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (source ((succ s) ! 0)) = s \<and> laststate (succ s) \<in> S')"
+  shows "laststate (ithpath succ s n) \<in> S' \<and> source ((ithpath succ s (Suc n)) ! 0) = laststate (ithpath succ s n)"
   apply (induct n)
   apply (simp add: assms)
   unfolding ithpath.simps using assms apply blast
@@ -619,32 +651,32 @@ lemma source_eq_target :
 
 lemma lasttarget_eq_targetithpath : 
   assumes "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (target ((succ s) ! (length (succ s) - Suc 0))) \<in> S')"
-  shows "target ((concipaths succ s (Suc n))!(length (concipaths succ s (Suc n)) - Suc 0)) = target ((ithpath succ s n) ! (length (ithpath succ s n) - Suc 0))"
+  shows "laststate (concipaths succ s (Suc n)) = laststate (ithpath succ s n)"
 proof-
   have res1: "(concipaths succ s (Suc n))!(length (concipaths succ s (Suc n)) - Suc 0) = (concipaths succ s n @ ithpath succ s n)!(length (concipaths succ s n @ ithpath succ s n) - Suc 0)" using concipathseqithpath by metis
-  have "target (ithpath succ s n ! (length (ithpath succ s n) - Suc 0)) \<in> S' \<and> length (ithpath succ s n) > 0" by (induct n; simp add: assms)
+  have "target (ithpath succ s n ! (length (ithpath succ s n) - Suc 0)) \<in> S' \<and> length (ithpath succ s n) > 0" by (induct n; simp add: assms laststate_def)
   moreover have "length (concipaths succ s n @ ithpath succ s n) = length (concipaths succ s n) + length (ithpath succ s n)" by auto
   ultimately have "length (concipaths succ s n) \<le> length (concipaths succ s n @ ithpath succ s n) - Suc 0" by arith
   hence "(concipaths succ s n @ ithpath succ s n)!(length (concipaths succ s n @ ithpath succ s n) - Suc 0) = ithpath succ s n!(length (concipaths succ s n @ ithpath succ s n) - Suc 0 - length (concipaths succ s n))" using nth_append_right by metis
-  thus ?thesis using res1 by auto
+  thus ?thesis using res1 by (simp add: laststate_def)
 qed
 
-lemma source_ithpath_eqlaststate : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> source (succ s ! 0) = s \<and> (target ((succ s)!(length (succ s) - Suc 0))) \<in> S') \<and> validfinpath M s (concipaths succ s n) s' \<Longrightarrow> source ((ithpath succ s n) ! 0) = s'"
+lemma source_ithpath_eqlaststate : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> source (succ s ! 0) = s \<and> laststate (succ s) \<in> S') \<and> validfinpath M s (concipaths succ s n) s' \<Longrightarrow> source ((ithpath succ s n) ! 0) = s'"
   apply (induct n)
   apply auto[1]
 proof-
   fix n
-  assume assum1: "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> source (succ s ! 0) = s \<and> (target ((succ s)!(length (succ s) - Suc 0))) \<in> S') \<and> validfinpath M s (concipaths succ s (Suc n)) s'"
+  assume assum1: "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> source (succ s ! 0) = s \<and> (laststate (succ s)) \<in> S') \<and> validfinpath M s (concipaths succ s (Suc n)) s'"
   hence "concipaths succ s (Suc n) \<noteq> []" by (induct n; simp)
-  hence "s' = target ((concipaths succ s (Suc n))!(length (concipaths succ s (Suc n)) - Suc 0))" using validfinpathtarget assum1 by metis
-  thus "source (ithpath succ s (Suc n) ! 0) = s'" using source_eq_target lasttarget_eq_targetithpath assum1 by metis
+  hence "s' = laststate (concipaths succ s (Suc n))" using validfinpathlaststate assum1 by metis
+  thus "source (ithpath succ s (Suc n) ! 0) = s'" using source_eq_target lasttarget_eq_targetithpath assum1 laststate_def by metis
 qed
 
 lemma validinfpathconc : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (\<exists>s' \<in> S'. validfinpath M s (succ s) s')) \<Longrightarrow> validinfpath M s (recursiveconcpaths succ s a)"
   apply (simp add: validinfpath_def del: recursiveconcpaths.simps)
 proof
   assume "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (\<exists>s' \<in> S'. validfinpath M s (succ s) s'))"
-  hence assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> validfinpath M s (succ s) (target ((succ s)!(length (succ s) - Suc 0))) \<and> (target ((succ s)!(length (succ s) - Suc 0))) \<in> S')" using validfinpathtarget by metis
+  hence assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> validfinpath M s (succ s) (laststate (succ s)) \<and> laststate (succ s) \<in> S')" using validfinpathlaststate by metis
   have res1: "\<forall>n. \<exists>s' \<in> S'. validfinpath M s (concipaths succ s n) s'"
   proof
     fix n
@@ -656,9 +688,9 @@ proof
       assume "\<exists>s' \<in> S'. validfinpath M s (concipaths succ s n) s'"
       from this obtain s' where validpath: "s' \<in> S' \<and> validfinpath M s (concipaths succ s n) s'" by auto
       moreover have firststate: "\<forall>s \<in> S'. source (succ s ! 0) = s" using assum1 validfinpathsource by metis
-      ultimately have "source ((ithpath succ s n) ! 0) = s'" using source_ithpath_eqlaststate assum1 
-        by (metis (mono_tags, lifting)) (*and this*)
-      moreover have "(source ((ithpath succ s n) ! 0)) \<in> S' \<and> (validfinpath M (source ((ithpath succ s n) ! 0)) (ithpath succ s n) (target ((ithpath succ s n)!(length ((ithpath succ s n)) - Suc 0))) \<and> (target ((ithpath succ s n)!(length ((ithpath succ s n)) - Suc 0))) \<in> S')" by (induct n; simp add: firststate assum1)
+      ultimately have "source ((ithpath succ s n) ! 0) = s'" using source_ithpath_eqlaststate assum1
+       by (metis (mono_tags, lifting)) (*and this*)
+      moreover have "(source ((ithpath succ s n) ! 0)) \<in> S' \<and> (validfinpath M (source ((ithpath succ s n) ! 0)) (ithpath succ s n) (laststate (ithpath succ s n)) \<and> laststate (ithpath succ s n) \<in> S')" by (induct n; simp add: firststate assum1)
       ultimately have "\<exists>s'' \<in> S'. validfinpath M s (concipaths succ s n @ ithpath succ s n) s''" using validpath validfinpathsplit by metis
       thus "\<exists>s'' \<in> S'. validfinpath M s (concipaths succ s (Suc n)) s''" using concipathseqithpath assum1 by metis
     qed
@@ -677,15 +709,12 @@ proof
   qed
 qed
 
-
-
-
 lemma validpredconc : 
-  assumes "Q s [] \<and> (\<forall>p p'. p \<noteq> [] \<and> Q s p \<and> Q (target (p!((length p) - Suc 0))) p' \<longrightarrow> Q s (p @ p'))"
+  assumes "Q s [] \<and> (\<forall>p p'. p \<noteq> [] \<and> Q s p \<and> Q (laststate p) p' \<longrightarrow> Q s (p @ p'))"
   and "\<forall>p n. n < length p \<and> Q s p \<longrightarrow> P s (p ! n)"
-  shows "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> Q s (succ s) \<and> target ((succ s)!(length (succ s) - Suc 0)) \<in> S') \<Longrightarrow> (\<forall>n. P s (recursiveconcpaths succ s a n))"
+  shows "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> Q s (succ s) \<and> laststate (succ s) \<in> S') \<Longrightarrow> (\<forall>n. P s (recursiveconcpaths succ s a n))"
 proof
-  assume assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> Q s (succ s) \<and> target ((succ s)!(length (succ s) - Suc 0)) \<in> S')"
+  assume assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> Q s (succ s) \<and> laststate (succ s) \<in> S')"
   have res1: "\<forall>n. Q s (concipaths succ s n)"
   proof
     fix n
@@ -706,10 +735,11 @@ proof
           apply arith
           using lengthithpath assum1 apply metis
           done
-        ultimately have laststate: "(concipaths succ s (Suc n))!(length (concipaths succ s (Suc n)) - Suc 0) = (ithpath succ s n)!(length (ithpath succ s n) - Suc 0)" by auto
-        have "target (ithpath succ s n ! (length (ithpath succ s n) - Suc 0)) \<in> S'" using targetinS' assum1 by metis
-        hence "Q (target (ithpath succ s n ! (length (ithpath succ s n) - Suc 0))) (ithpath succ s (Suc n))" using assum1 by simp
-        hence "Q (target ((concipaths succ s (Suc n))!(length (concipaths succ s (Suc n)) - Suc 0))) (ithpath succ s (Suc n))" using laststate by auto
+(*have i seen this before*)
+        ultimately have laststate: "laststate (concipaths succ s (Suc n)) = laststate (ithpath succ s n)" unfolding laststate_def by auto
+        have "laststate (ithpath succ s n) \<in> S'" using targetinS' assum1 by metis
+        hence "Q (laststate (ithpath succ s n)) (ithpath succ s (Suc n))" using assum1 by simp
+        hence "Q (laststate (concipaths succ s (Suc n))) (ithpath succ s (Suc n))" using laststate by auto
         moreover have "(concipaths succ s (Suc n)) \<noteq> []" using assum1 by simp
         ultimately have "Q s (concipaths succ s (Suc n) @ ithpath succ s (Suc n))" using assum2 assms(1) by metis
         thus "Q s (concipaths succ s (Suc (Suc n)))" using concipathseqithpath by metis
@@ -726,6 +756,14 @@ proof
     ultimately show "P s (recursiveconcpaths succ s a n)" by metis
   qed
 qed
+
+
+
+
+
+
+
+
 
 lemma successorlemma : 
   assumes "(s \<in> S' \<and> (\<forall>s'. s' \<in> S' \<longrightarrow> (\<exists>t. source t = s' \<and> P t \<and> t \<in> transition M \<and> target t \<in> S')))"
@@ -1086,7 +1124,7 @@ qed
 lemma splitvalidfinpathnotoccurslockedenabled' : 
   assumes "\<forall>s p s'. validfinpath M s p s' \<longrightarrow> ((\<exists>finextension s''. validfinpath M s (p @ finextension) s'' \<and> locked M B s'') \<or> (\<exists>infextension. validinfpath M s (conc p infextension) \<and> P s (inf (conc p infextension))))" (*last one maybe needs to be P s (inf infextension)*)
 
-  shows "(\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> (\<exists>s'' a. a \<in> \<alpha>\<^sub>e \<and> (s', a, s'' ) \<in> transition M)))
+  shows "(\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> enabled M s' \<alpha>\<^sub>e))
 = ((\<exists>p' s'. validfinpath M s p' s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p') \<and> locked M B s') \<or> 
   (\<exists>p' s'. validfinpath M s p' s' \<and> (\<exists>i < length p'. \<not>(occurs \<alpha>\<^sub>f (fin (take i p'))) \<and> action (p'!i) \<in> \<alpha>\<^sub>e) \<and> locked M B s') \<or>
   (\<exists>p'. validinfpath M s p' \<and>  (\<exists>i. \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and> action (p' i) \<in> \<alpha>\<^sub>e) \<and> P s (inf p')))" 
@@ -1099,25 +1137,27 @@ proof
     from this obtain p' s' i where assum1 : "i < length p' \<and> validfinpath M s p' s' \<and> \<not>(occurs \<alpha>\<^sub>f (fin (take i p'))) \<and> action (p'!i) \<in> \<alpha>\<^sub>e \<and> locked M B s'" by auto
     have "action (p'!i) \<in> \<alpha>\<^sub>e \<and> (source (p'!i), action (p'!i), target (p'!i)) \<in> transition M" using assum1 by auto
     hence "\<exists>s'' a. a \<in> \<alpha>\<^sub>e \<and> (source (p'!i), a, s'') \<in> transition M" by blast
+    hence "enabled M (source (p'!i)) \<alpha>\<^sub>e" by (auto simp: enabled_def enabledactions_def)
     moreover have "validfinpath M s (take i p') (source (p'!i)) \<and> \<not>(occurs \<alpha>\<^sub>f (fin (take i p')))" using assum1 by auto
-    ultimately have "\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (\<exists>s'' a. a \<in> \<alpha>\<^sub>e \<and> (s', a, s'') \<in> transition M)" by auto   
+    ultimately have "\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> enabled M s' \<alpha>\<^sub>e" by auto   
   }
   moreover {
     assume "\<exists>p'. validinfpath M s p' \<and>  (\<exists>i. \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and> action (p' i) \<in> \<alpha>\<^sub>e) \<and> P s (inf p')"
     from this obtain p' i where assum1 : "validinfpath M s p' \<and>  \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and>  action (p' i) \<in> \<alpha>\<^sub>e" by auto
     hence "p' i \<in> transition M \<and> action (p' i) \<in> \<alpha>\<^sub>e" using validinfpath_def by metis
     hence "(source (p' i), action (p' i), target (p' i)) \<in> transition M \<and> action (p' i) \<in> \<alpha>\<^sub>e" by simp
-    hence "validfinpath M s (prefix i p') (source (p' i)) \<and> \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and> (source (p' i), action (p' i), target (p' i)) \<in> transition M \<and> action (p' i) \<in> \<alpha>\<^sub>e" using assum1 validinfsubpath assum1 by metis
-    hence "\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (\<exists>s'' a. a \<in> \<alpha>\<^sub>e \<and> (s', a, s'') \<in> transition M)" by blast
+    hence "enabled M (source (p' i)) \<alpha>\<^sub>e" by (simp add: enabled_def enabledactions_def; blast)
+    hence "validfinpath M s (prefix i p') (source (p' i)) \<and> \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and> enabled M (source (p' i)) \<alpha>\<^sub>e" using assum1 validinfsubpath assum1 by metis
+    hence "\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> enabled M s' \<alpha>\<^sub>e" by blast
   }
-  ultimately show "\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> (\<exists>s'' a. a \<in> \<alpha>\<^sub>e \<and> (s', a, s'' ) \<in> transition M))" by blast
+  ultimately show "\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> enabled M s' \<alpha>\<^sub>e)" by blast
 next
-  assume "\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> (\<exists>s'' a. a \<in> \<alpha>\<^sub>e \<and> (s', a, s'') \<in> transition M))"
-  from this obtain p s' where "validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> (\<exists>s'' a. a \<in> \<alpha>\<^sub>e \<and> (s', a, s'') \<in> transition M))" by auto
-  hence "(validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> locked M B s') \<or> (validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (\<exists>s'' a. a \<in> \<alpha>\<^sub>e \<and> (s', a, s'') \<in> transition M))" by auto
+  assume "\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> enabled M s' \<alpha>\<^sub>e)"
+  from this obtain p s' where "validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> enabled M s' \<alpha>\<^sub>e)" by auto
+  hence "(validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> locked M B s') \<or> (validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> enabled M s' \<alpha>\<^sub>e)" by auto
   moreover {
-    assume "(validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (\<exists>s'' a. a \<in> \<alpha>\<^sub>e \<and> (s', a, s'') \<in> transition M))"
-    from this obtain s'' a where assum1 : "validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> a \<in> \<alpha>\<^sub>e \<and> (s', a, s'') \<in> transition M" by auto
+    assume "validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> enabled M s' \<alpha>\<^sub>e"
+    from this obtain s'' a where assum1 : "validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> a \<in> \<alpha>\<^sub>e \<and> (s', a, s'') \<in> transition M" by (simp add: enabled_def enabledactions_def; auto)
     let ?t = "(s', a, s'')"
     have "validfinpath M s p s' \<and> validfinpath M s' [?t] s''" using assum1 by auto
     hence "validfinpath M s (p@[?t]) s''" using validfinpathsplit by metis
@@ -1143,5 +1183,17 @@ next
   \<or> (\<exists>p' s'. validfinpath M s p' s' \<and> (\<exists>i < length p'. \<not> occurs \<alpha>\<^sub>f (fin (take i p')) \<and> action (p' ! i) \<in> \<alpha>\<^sub>e) \<and> locked M B s') 
   \<or> (\<exists>p'. validinfpath M s p' \<and> (\<exists>i. \<not> occurs \<alpha>\<^sub>f (fin (prefix i p')) \<and> action (p' i) \<in> \<alpha>\<^sub>e) \<and> P s (inf p'))" by auto
 qed
+
+lemma splitcases' :
+  assumes "\<forall>p s. (\<exists>s'. validfinpath M s p s' \<and> P s (fin p)) = progressing M s B (fin p)"
+  and "\<forall>s p s'. validfinpath M s p s' \<longrightarrow> ((\<exists>finextension s''. validfinpath M s (p @ finextension) s'' \<and> locked M B s'') \<or> (\<exists>infextension. validinfpath M s (conc p infextension) \<and> P s (inf (conc p infextension))))" (*last one maybe needs to be P s (inf infextension)*)
+  shows " ((\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> enabled M s' \<alpha>\<^sub>e))
+  \<or> (\<exists>p. validinfpath M s p \<and> \<not> occurs \<alpha>\<^sub>f (inf p) \<and> P s (inf p))) =
+  (\<exists> p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> P s p)"
+  apply (subst unfoldcases')
+  using assms apply simp
+  apply (subst splitvalidfinpathnotoccurslockedenabled')
+  using assms apply auto
+  done
 
 end
