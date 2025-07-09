@@ -438,66 +438,35 @@ lemma occursBox [simp] : "finitereg R \<Longrightarrow> (occursvari (Box R f) i)
   apply auto
   done
 
-lemma notoccursnuandmu [simp] :
-assumes "\<forall>i e. \<not> occursvari (f :: 'a formula) i \<longrightarrow> (\<lbrakk>f\<rbrakk> M e = \<lbrakk>f\<rbrakk> M (e(i := S')))" 
-shows "\<sigma> \<in> {nu, mu} \<Longrightarrow>  \<not> occursvari (\<sigma> f) i \<longrightarrow> (\<lbrakk>\<sigma> f\<rbrakk> M e = \<lbrakk>\<sigma> f\<rbrakk> M (e(i := S')))"
-proof
-  assume assum1 : "(\<sigma> :: ('a formula => 'a formula)) \<in> {nu, mu}"
-  assume assum2: "\<not> occursvari (\<sigma> f) i"
-  hence "\<not> occursvari f (Suc i)" using assum1 by (cases "\<sigma> = mu") simp_all      
-  hence "(\<forall> S''. \<lbrakk>f\<rbrakk> M (newenvironment e S'') = \<lbrakk>f\<rbrakk> M ((newenvironment e S'') ((Suc i) := S')))" using assms by metis
-  hence con1: "\<forall> S''. \<lbrakk>f\<rbrakk> M (newenvironment e S'') = \<lbrakk>f\<rbrakk> M (newenvironment (e(i := S')) S'')" by simp
-  show "(\<lbrakk>\<sigma> f\<rbrakk> M e = \<lbrakk>\<sigma> f\<rbrakk> M (e(i := S')))"
-    apply (cases "\<sigma> = mu")
-    apply (simp add: con1) 
-    apply (subgoal_tac "\<sigma> = nu")
-    apply (simp add: con1) 
-    using assum1 apply blast
-    done
-qed
-
-lemma notoccurs [simp] : "(\<not>(occursvari f i) \<longrightarrow> (\<lbrakk>f\<rbrakk> M e = \<lbrakk>f\<rbrakk> M (e(i := S'))))"
-  apply (induct f arbitrary: e i S')
-  prefer 9
-  using notoccursnuandmu apply blast
-  prefer 9
-  using notoccursnuandmu apply blast
-  apply (simp_all)
-  done
-
-lemma notoccurseqnu :
-  assumes "\<not> occursvari f 0"
-  shows "\<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>nu f\<rbrakk> M e"
-  apply simp
-proof-
-  have "\<forall>S''. \<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M ((newenvironment e S') (0 := S''))" using assms notoccurs by metis
-  hence "\<forall>S''. \<lbrakk>f\<rbrakk> M ((newenvironment e S'')) = \<lbrakk>f\<rbrakk> M (newenvironment e S')" using newenvironmentswitchzero by auto
-  hence "\<Union> {S''. S'' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S'')} = \<Union> {S''. S'' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}" by blast
-  moreover have "... = \<lbrakk>f\<rbrakk> M (newenvironment e S')" by auto
-  ultimately show "\<lbrakk>f\<rbrakk> M (newenvironment e S') = \<Union> {S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}" by auto
-qed
-
-lemma notoccurseqmu :
-  assumes "\<not> occursvari f 0"
-  shows "\<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>mu f\<rbrakk> M e"
-  apply simp
-proof-
-  have "\<forall>S''. \<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M ((newenvironment e S') (0 := S''))" using assms notoccurs by metis
-  hence "\<forall>S''. \<lbrakk>f\<rbrakk> M ((newenvironment e S'')) = \<lbrakk>f\<rbrakk> M (newenvironment e S')" using newenvironmentswitchzero by auto
-  hence "\<Inter> {S''. \<lbrakk>f\<rbrakk> M (newenvironment e S'') \<subseteq> S''} = \<Inter> {S''. \<lbrakk>f\<rbrakk> M (newenvironment e S') \<subseteq> S''}" by blast
-  moreover have "... = \<lbrakk>f\<rbrakk> M (newenvironment e S')" by auto
-  ultimately show "\<lbrakk>f\<rbrakk> M (newenvironment e S') = \<Inter> {S'. \<lbrakk>f\<rbrakk> M (newenvironment e S') \<subseteq> S'}" by auto
-qed
-
 definition transformer :: "'a formula \<Rightarrow> ('a, 's) lts \<Rightarrow> (nat \<Rightarrow> 's set) \<Rightarrow> 's set \<Rightarrow> 's set "
   where
 "transformer f M e S' = \<lbrakk>f\<rbrakk> M (newenvironment e S')"
 
+lemma transformerdef : "transformer f M e = (\<lambda>S'. \<lbrakk>f\<rbrakk> M (newenvironment e S'))"
+  by (rule; simp add: transformer_def)
+
 definition dependvari :: "'a formula \<Rightarrow> ('a, 's) lts \<Rightarrow> nat \<Rightarrow> bool" where
 "dependvari f M i = (\<exists>e S'. \<lbrakk>f\<rbrakk> M e \<noteq> \<lbrakk>f\<rbrakk> M (e(i := S')))"
 
-lemma transformerdef : "transformer f M e = (\<lambda>S'. \<lbrakk>f\<rbrakk> M (newenvironment e S'))"
-  by (meson transformer_def)
+lemma notdependseqnu :
+  assumes "\<not> dependvari f M 0"
+  shows "\<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>nu f\<rbrakk> M e"
+proof-
+  have "\<forall>S''. \<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M ((newenvironment e S') (0 := S''))" using assms dependvari_def by blast
+  hence "\<forall>S''. \<lbrakk>f\<rbrakk> M (newenvironment e S'') = \<lbrakk>f\<rbrakk> M (newenvironment e S')" by auto
+  hence "\<Union> {S''. S'' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S'')} = \<Union> {S''. S'' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}" by blast
+  thus ?thesis by auto
+qed
+
+lemma notdependseqmu :
+  assumes "\<not> dependvari f M 0"
+  shows "\<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>mu f\<rbrakk> M e"
+proof-
+  have "\<forall>S''. \<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M ((newenvironment e S') (0 := S''))" using assms dependvari_def by blast
+  hence "\<forall>S''. \<lbrakk>f\<rbrakk> M (newenvironment e S'') = \<lbrakk>f\<rbrakk> M (newenvironment e S')" by auto
+  hence "\<Inter> {S''. \<lbrakk>f\<rbrakk> M (newenvironment e S'') \<subseteq> S''} = \<Inter> {S''. \<lbrakk>f\<rbrakk> M (newenvironment e S') \<subseteq> S''}" by blast
+  thus ?thesis by auto
+qed
 
 lemma notdependsmono : "\<not>dependvari f M i \<Longrightarrow>
   mono (\<lambda>S.(\<lbrakk>f\<rbrakk> M (e(i := S)))) \<and> antimono (\<lambda>S.(\<lbrakk>f\<rbrakk> M (e(i := S))))"
@@ -533,11 +502,25 @@ where
   "(notdependalloccursposnegi (nu f) M i b) = (\<not>dependvari (nu f) M i \<or> notdependalloccursposnegi f M (Suc i) b)" |
   "(notdependalloccursposnegi (mu f) M i b) = (\<not>dependvari (mu f) M i \<or> notdependalloccursposnegi f M (Suc i) b)"
 
-lemma notoccursposneg : "\<not>occursvari f i \<Longrightarrow> notdependalloccursposnegi f M i True \<and> notdependalloccursposnegi f M i False"
-  by (induct f arbitrary: i; simp)
-
-lemma dependvarineg : "dependvari f M i = dependvari (neg f) M i"
+lemma dependvarineg : "dependvari (neg f) M i = dependvari f M i"
   by (simp add: dependvari_def)
+
+lemma dependvariandor : "\<not>dependvari f1 M i \<and> \<not>dependvari f2 M i \<Longrightarrow> \<not>dependvari (and' f1 f2) M i \<and> \<not>dependvari (or f1 f2) M i"
+  by (simp add: dependvari_def)
+
+lemma dependvariboxdiamond : "\<not>dependvari f M i  \<Longrightarrow> \<not>dependvari (box a f) M i \<and> \<not>dependvari (diamond a f) M i"
+  by (simp add: dependvari_def)
+
+lemma dependvarinumu : "\<not>dependvari f M (Suc i)  \<Longrightarrow> \<not>dependvari (nu f) M i \<and> \<not>dependvari (mu f) M i"
+  by (simp add: dependvari_def)
+
+lemma notoccursnotdepends : "\<not>occursvari f i \<longrightarrow> \<not>dependvari f M i"
+  apply (induct f arbitrary: i; simp add: dependvarineg dependvariandor dependvariboxdiamond dependvarinumu)
+  apply (simp_all add: dependvari_def)
+  done
+
+lemma dependsoccurs : "dependvari f M i \<Longrightarrow> occursvari f i"
+  using notoccursnotdepends by auto
 
 lemma notdepends : "\<not>dependvari f M i \<Longrightarrow> notdependalloccursposnegi f M i b"
   apply (induct f arbitrary : i b; simp add: dependvari_def)
@@ -577,7 +560,7 @@ lemma boxdiamondantimono :
   shows "antimono (\<lambda>S'. {s. \<forall> s'. (s, a, s') \<in> (transition M) \<longrightarrow>  s' \<in> f S'})"
   and "antimono (\<lambda>S'. {s. \<exists> s'. (s, a, s') \<in> (transition M) \<and>  s' \<in> f S'})"
   apply (simp_all add: monotone_def)
-  using assms antimonoD apply (blast)+
+  using assms antimonoD apply blast+
   done
 
 lemma numumono : 
@@ -699,26 +682,26 @@ proof-
 qed
 
 lemma fixpointmono:
-  assumes "mono (f :: ('a set \<Rightarrow> 'a set))"
-  and "finite (UNIV :: 'a set)"
+  assumes "mono (f :: ('s set \<Rightarrow> 's set))"
+  and "finite (UNIV :: 's set)"
   and "S' \<subseteq> f S' \<or> f S' \<subseteq> S'"
-  shows "\<exists>n \<le> card(UNIV :: 'a set). (f^^n) S' = (f^^(Suc n)) S'"
+  shows "\<exists>n \<le> card(UNIV :: 's set). (f^^n) S' = (f^^(Suc n)) S'"
 proof (rule ccontr)
-  assume "\<not> (\<exists>n\<le>card(UNIV :: 'a set).((f ^^ n) S') = ((f ^^ Suc n) S'))"
-  hence assum1 : "\<forall>n\<le>card(UNIV :: 'a set).((f ^^ n) S') \<noteq> ((f ^^ Suc n) S')" by auto
+  assume "\<not> (\<exists>n\<le>card(UNIV :: 's set).((f ^^ n) S') = ((f ^^ Suc n) S'))"
+  hence assum1 : "\<forall>n\<le>card(UNIV :: 's set).((f ^^ n) S') \<noteq> ((f ^^ Suc n) S')" by auto
   {
     assume assum2 : "S' \<subseteq> f S'"
-    have  "\<forall>n \<le> Suc (card(UNIV :: 'a set)). card ((f ^^ n) S') \<ge> n"
+    have  "\<forall>n \<le> Suc (card(UNIV :: 's set)). card ((f ^^ n) S') \<ge> n"
     proof
       fix n
-      show "n \<le> Suc (card(UNIV :: 'a set)) \<longrightarrow> n \<le> card ((f ^^ n) S')"
+      show "n \<le> Suc (card(UNIV :: 's set)) \<longrightarrow> n \<le> card ((f ^^ n) S')"
         apply (induct n)
         apply simp
       proof
         fix n
-        assume assum3: "n \<le> Suc (card (UNIV :: 'a set)) \<longrightarrow> n \<le> card ((f ^^ n) S')"
-        assume assum4 : "Suc n \<le> Suc (card (UNIV :: 'a set))"
-        hence "n \<le> (card (UNIV :: 'a set))" by simp
+        assume assum3: "n \<le> Suc (card (UNIV :: 's set)) \<longrightarrow> n \<le> card ((f ^^ n) S')"
+        assume assum4 : "Suc n \<le> Suc (card (UNIV :: 's set))"
+        hence "n \<le> (card (UNIV :: 's set))" by simp
         hence "(f ^^ n) S' \<noteq> (f ^^ (Suc n)) S'" using assum1 by simp
         moreover have "(f ^^ n) S' \<subseteq> (f ^^ (Suc n)) S'" using assms(1) assum2 monosubset by blast 
         ultimately have "(f ^^ n) S' \<subset> (f ^^ (Suc n)) S'" using psubset_eq by simp
@@ -727,58 +710,58 @@ proof (rule ccontr)
         thus "Suc n \<le> card ((f ^^ Suc n) S')" using assum3 assum4 by simp
       qed
     qed
-    hence contradiction1 : "card ((f ^^ Suc (card(UNIV :: 'a set))) S') \<ge>  Suc (card(UNIV :: 'a set))" by auto
-    have contradiction2: "card ((f ^^ Suc (card(UNIV :: 'a set))) S') \<le> card(UNIV :: 'a set)" using assms(2) card_mono by auto
+    hence contradiction1 : "card ((f ^^ Suc (card(UNIV :: 's set))) S') \<ge>  Suc (card(UNIV :: 's set))" by auto
+    have contradiction2: "card ((f ^^ Suc (card(UNIV :: 's set))) S') \<le> card(UNIV :: 's set)" using assms(2) card_mono by auto
     have False using contradiction1 contradiction2 by auto
   }
   moreover{
     assume assum2 : "f S' \<subseteq> S'"
-    have  "\<forall>n \<le> Suc (card(UNIV :: 'a set)). card ((f ^^ n) S') < Suc(card(UNIV :: 'a set)) - n"
+    have  "\<forall>n \<le> Suc (card(UNIV :: 's set)). card ((f ^^ n) S') < Suc(card(UNIV :: 's set)) - n"
     proof
       fix n
-      show "n \<le> Suc (card(UNIV :: 'a set)) \<longrightarrow> card ((f ^^ n) S') < Suc (card(UNIV :: 'a set)) - n"
+      show "n \<le> Suc (card(UNIV :: 's set)) \<longrightarrow> card ((f ^^ n) S') < Suc (card(UNIV :: 's set)) - n"
         apply (induct n)
         apply (simp add : assms(2) card_mono less_Suc_eq_le)
       proof
         fix n
-        assume assum3: "n \<le> Suc (card (UNIV :: 'a set)) \<longrightarrow> card ((f ^^ n) S') < Suc(card (UNIV :: 'a set)) - n"
-        assume assum4 : "Suc n \<le> Suc (card (UNIV :: 'a set))"
-        hence "n \<le> (card (UNIV :: 'a set))" by simp
+        assume assum3: "n \<le> Suc (card (UNIV :: 's set)) \<longrightarrow> card ((f ^^ n) S') < Suc(card (UNIV :: 's set)) - n"
+        assume assum4 : "Suc n \<le> Suc (card (UNIV :: 's set))"
+        hence "n \<le> (card (UNIV :: 's set))" by simp
         hence "(f ^^ n) S' \<noteq> (f ^^ (Suc n)) S'" using assum1 by simp
         moreover have "(f ^^ (Suc n)) S' \<subseteq> (f ^^ n) S'" using assms(1) assum2 monosubset by blast 
         ultimately have "(f ^^ (Suc n)) S' \<subset> (f ^^  n) S'" using psubset_eq by simp
         moreover have "finite ((f ^^ n) S')" using assms(2) rev_finite_subset by auto
         ultimately have "card ((f ^^ (Suc n)) S') < card ((f ^^ n) S')" using psubset_card_mono by metis
-        thus "card ((f ^^ Suc n) S') < Suc(card (UNIV :: 'a set)) - (Suc n)" using assum3 assum4 by simp
+        thus "card ((f ^^ Suc n) S') < Suc(card (UNIV :: 's set)) - (Suc n)" using assum3 assum4 by simp
       qed
     qed
-    hence "card ((f ^^ Suc (card(UNIV :: 'a set))) UNIV) <  0" by auto
+    hence "card ((f ^^ Suc (card(UNIV :: 's set))) UNIV) <  0" by auto
     hence False by auto
   }
   ultimately show False using assms(3) by auto
 qed
 
 lemma gfp_monofin [simp] :
-  assumes "(finite (UNIV :: 'a set))"
-  and "mono (f :: 'a set \<Rightarrow> 'a set)"
-  shows "(f^^(card (UNIV :: 'a set))) UNIV = gfp f"
+  assumes "(finite (UNIV :: 's set))"
+  and "mono (f :: 's set \<Rightarrow> 's set)"
+  shows "(f^^(card (UNIV :: 's set))) UNIV = gfp f"
 proof-
-  have "\<exists>n \<le> card(UNIV :: 'a set). (f^^n) (UNIV) = (f^^(Suc n)) (UNIV)" using assms fixpointmono by blast
-  from this obtain n where assum2: "n \<le> card (UNIV :: 'a set) \<and>  (f^^n) (UNIV) = (f^^(Suc n)) (UNIV)" by auto
-  hence "(f ^^ (n + (card (UNIV :: 'a set) - n))) (UNIV) = (f ^^ (Suc n +  (card (UNIV :: 'a set) - n))) (UNIV)" using fpoweriplusn by metis
-  hence "(f^^(card (UNIV :: 'a set)))(UNIV) = (f^^Suc(card (UNIV :: 'a set)))(UNIV)" using assum2 by auto
+  have "\<exists>n \<le> card(UNIV :: 's set). (f^^n) (UNIV) = (f^^(Suc n)) (UNIV)" using assms fixpointmono by blast
+  from this obtain n where assum2: "n \<le> card (UNIV :: 's set) \<and>  (f^^n) (UNIV) = (f^^(Suc n)) (UNIV)" by auto
+  hence "(f ^^ (n + (card (UNIV :: 's set) - n))) (UNIV) = (f ^^ (Suc n +  (card (UNIV :: 's set) - n))) (UNIV)" using fpoweriplusn by metis
+  hence "(f^^(card (UNIV :: 's set)))(UNIV) = (f^^Suc(card (UNIV :: 's set)))(UNIV)" using assum2 by auto
   thus ?thesis using gfp_Kleene_iter assms(2) by blast
 qed
 
 lemma lfp_monofin [simp] :
-  assumes "(finite (UNIV :: 'a set))"
-  and "mono (f :: 'a set \<Rightarrow> 'a set)"
-  shows "(f^^(card (UNIV :: 'a set))) {} = lfp f"
+  assumes "(finite (UNIV :: 's set))"
+  and "mono (f :: 's set \<Rightarrow> 's set)"
+  shows "(f^^(card (UNIV :: 's set))) {} = lfp f"
 proof-
-  have "\<exists>n \<le> card(UNIV :: 'a set). (f^^n) {} = (f^^(Suc n)) {}" using assms fixpointmono by blast
-  from this obtain n where assum2: "n \<le> card (UNIV :: 'a set) \<and>  (f^^n) {} = (f^^(Suc n)) {}" by auto
-  hence "(f ^^ (n + (card (UNIV :: 'a set) - n))) {} = (f ^^ (Suc n +  (card (UNIV :: 'a set) - n))) {}" using fpoweriplusn by metis
-  hence "(f^^(card (UNIV :: 'a set))){} = (f^^Suc(card (UNIV :: 'a set))){}" using assum2 by auto
+  have "\<exists>n \<le> card(UNIV :: 's set). (f^^n) {} = (f^^(Suc n)) {}" using assms fixpointmono by blast
+  from this obtain n where assum2: "n \<le> card (UNIV :: 's set) \<and>  (f^^n) {} = (f^^(Suc n)) {}" by auto
+  hence "(f ^^ (n + (card (UNIV :: 's set) - n))) {} = (f ^^ (Suc n +  (card (UNIV :: 's set) - n))) {}" using fpoweriplusn by metis
+  hence "(f^^(card (UNIV :: 's set))){} = (f^^Suc(card (UNIV :: 's set))){}" using assum2 by auto
   thus ?thesis using lfp_Kleene_iter assms(2) by blast
 qed
 
