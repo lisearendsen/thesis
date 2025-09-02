@@ -1,66 +1,36 @@
 theory syntaxsemantics
-imports Main "HOL-Library.Omega_Words_Fun"
+imports Main "Regular-Sets.Regular_Exp" "HOL-Library.Omega_Words_Fun"
 begin
 
-datatype 'a regularformula =
-  eps | acts "'a set" |
-  after "'a regularformula" "'a regularformula"| 
-  union "'a regularformula" "'a regularformula" | 
-  repeat "'a regularformula"
+text \<open>We extend \<open>rexp\<close> by adding a constructor \<open>Acts\<close>, representing a set of actions.
+In this way regular expressions are inherently finite\<close>
 
-text \<open>A regular formula is finite if and only if all sets of actions occurring in the 
-formula are finite.\<close>
+fun Actslist :: "'a list \<Rightarrow> 'a rexp " where
+"Actslist [] = Zero" |
+"Actslist (a # as) = Plus (Actslist as) (Atom a)"
 
-fun finitereg :: "'a regularformula \<Rightarrow> bool" where
-"finitereg eps = True" |
-"finitereg (acts A) = finite A" |
-"finitereg (after R Q) = (finitereg R \<and> finitereg Q)" |
-"finitereg (union R Q) = (finitereg R \<and> finitereg Q)" |
-"finitereg (repeat R) = finitereg R"
+definition Acts :: "'a set \<Rightarrow> 'a rexp" where
+"Acts A = Actslist (if finite A then (SOME listA. set listA = A) else undefined)"
 
-(* from "HOL-Library.Regular-Sets.Regular_Exp" *)
-definition concat :: "'a list set \<Rightarrow> 'a list set \<Rightarrow> 'a list set" (infixr \<open>@@\<close> 75) where
-"A @@ B = {xs@ys | xs ys. xs:A & ys:B}"
+lemma Actslistlang : "lang (Actslist A) =  {[a] |a. a \<in> set A}"
+  by (induct A; auto)
 
-(*this is probably also defined already*)
+lemma Actslang [simp] : "finite A \<Longrightarrow> lang (Acts A) =  {[a] |a. a \<in> A}"
+  apply (simp add: Acts_def Actslistlang)
+  apply (rule someI2_ex; simp add: finite_list)
+  done
+
 lemma abinconc : "a \<in> A \<and> b \<in> B \<Longrightarrow> a@b \<in> A@@B"
   using concat_def by blast
 
 lemma exists_abinconc : "(ab \<in> A@@B) = (\<exists>a b. ab = a@b \<and> a \<in> A \<and> b \<in> B)"
-  by (simp add: concat_def)
+  by blast
 
 lemma exists_map_abinconc : "(map f ab \<in> A@@B) = (\<exists>a b. ab = a@b \<and> (map f a) \<in> A \<and> (map f b) \<in> B)"
   apply (rule iffI)
   apply (metis exists_abinconc append_eq_map_conv)
   apply (metis abinconc map_append)
   done
-
-text \<open>Define powers on regular formulas to describe the language of the repeat operator.\<close>
-
-overloading
-  formpow \<equiv> "compow :: nat \<Rightarrow> 'a list set \<Rightarrow> 'a list set"
-begin
-  fun formpow :: "nat \<Rightarrow>'a list set \<Rightarrow> 'a list set"
-  where
-    "formpow 0 A = {[]}" |
-    "formpow (Suc n) A = A @@ (formpow n A)"
-end
-
-definition formpow :: "nat \<Rightarrow> 'a list set \<Rightarrow> 'a list set" where
-  formpow [code_abbrev]: "formpow = compow"
-
-text \<open>Now the language of a regular formula can be defined.\<close>
-
-fun regformtolanguage :: "'a regularformula \<Rightarrow> 'a list set" where
-"regformtolanguage eps = {[]}" |
-"regformtolanguage (acts A) = {[a] |a. (a \<in>A)}" |
-"regformtolanguage (after R Q) = ({r @ q |r q. (r \<in> regformtolanguage R) \<and> (q \<in> regformtolanguage Q)})" |
-"regformtolanguage (union R Q) = (regformtolanguage R) \<union> (regformtolanguage Q)" |
-"regformtolanguage (repeat R) = (\<Union>n. (regformtolanguage R) ^^ n)"
-
-value "regformtolanguage (eps) :: nat list set" 
-value "regformtolanguage (acts {}) :: nat list set" 
-value "regformtolanguage (after (acts {1, 2}) (acts {3, 4})) :: nat list set"
 
 text \<open>A mu calculus formula is defined on a type of actions \<open>'a\<close>,
 and de Bruijn indices are used as variables.\<close>
@@ -98,7 +68,7 @@ definition example_lts :: "(example_actions, example_states) lts" where
 abbreviation newenvironment :: "(nat \<Rightarrow> 's set) \<Rightarrow> 's set \<Rightarrow> (nat \<Rightarrow> 's set) " where
 "newenvironment e S' \<equiv> S' ## e"
 
-text \<open>Some simplifications for \<open>newenvironment\<close>.\<close>
+text \<open>Some simplifications for \<open>newenvironment\<close>, specifically with respect to updating the environment.\<close>
 
 lemma newenvironmentsuccessorcomplement [simp] : 
 "(newenvironment e S')((Suc i) := - ((newenvironment e S') (Suc i))) = newenvironment (e(i := - e i)) S'"
@@ -107,7 +77,7 @@ lemma newenvironmentsuccessorcomplement [simp] :
   done
 
 lemma newenvironmentzerocomplement [simp] : 
-"(newenvironment e S')(0 := (-(newenvironment e S') 0)) = (newenvironment e (-S'))"
+"(newenvironment e S')(0 := (-(newenvironment e S') 0)) = newenvironment e (-S')"
   apply (rule)
   apply (induct_tac x; simp)
   done
@@ -137,7 +107,7 @@ where
   "\<lbrakk>nu f\<rbrakk> M e = \<Union> {S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}" |
   "\<lbrakk>mu f\<rbrakk> M e = \<Inter> {S'. S' \<supseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}"
 
-text \<open>Proving formulas on the example as given before.\<close>
+text \<open>Proving semantics of formulas on the example as given before.\<close>
 
 lemma "\<lbrakk>box \<a> ff\<rbrakk> example_lts e = {s\<^sub>0}"
   apply (simp add: example_lts_def)
@@ -158,6 +128,10 @@ lemma "\<lbrakk>nu (diamond \<a> (var 0))\<rbrakk> example_lts e = {s\<^sub>1}"
   apply (rule Union_upper)
   apply auto
   done
+
+text \<open>\<open>shiftup\<close> is defined on formulas to be able to wrap a formula in a new binder 
+without changing its definition. For example, \<open>var 0\<close> and \<open>mu (var 1)\<close> represent the same formula.
+\<open>shiftdown\<close> is its opposite.\<close>
 
 fun shiftup :: "'a formula \<Rightarrow> nat \<Rightarrow> 'a formula "
 where 
@@ -191,6 +165,8 @@ lemma shiftupanddown : "shiftdown (shiftup f i) i = f"
 definition shiftdownenv :: "(nat \<Rightarrow> 's set) \<Rightarrow> nat \<Rightarrow> (nat \<Rightarrow> 's set) " where
 "shiftdownenv e i n = (if n < i then e n else e (n + 1))"
 
+text \<open>Defining extensions of the mu calculus, specifically \<open>And\<close>, \<open>Or\<close>, \<open>Diamond\<close>, and \<open>Box\<close>.\<close>
+
 fun Andlist :: "'a list \<Rightarrow> ('a \<Rightarrow> 'a formula) \<Rightarrow> 'a formula " where
 "Andlist [] F = tt" |
 "Andlist (a # as) F = and' (F a) (Andlist as F)"
@@ -207,7 +183,7 @@ lemma And_eq_all : "finite A \<Longrightarrow> \<lbrakk>And A F\<rbrakk> M e = {
   done
 
 lemma And_eq_all' [simp] : "finite A \<Longrightarrow> \<lbrakk>And A F\<rbrakk> M e = (\<Inter>a \<in> A. {s. s \<in> \<lbrakk>F a\<rbrakk> M e})"
-  by (subst And_eq_all; simp; auto)
+  by (subst And_eq_all; auto)
 
 fun Orlist :: "'a list \<Rightarrow> ('a \<Rightarrow> 'a formula) \<Rightarrow> 'a formula " where
 "Orlist [] F = ff" |
@@ -224,110 +200,89 @@ lemma Or_eq_exist : "finite A \<Longrightarrow> \<lbrakk>Or A F\<rbrakk> M e = {
   apply (rule someI2_ex; simp add: finite_list)
   done
 
-lemma Or_eq_all' : "finite A \<Longrightarrow> \<lbrakk>Or A F\<rbrakk> M e = (\<Union>a \<in> A. {s. s \<in> \<lbrakk>F a\<rbrakk> M e})"
+lemma Or_eq_exist' : "finite A \<Longrightarrow> \<lbrakk>Or A F\<rbrakk> M e = (\<Union>a \<in> A. {s. s \<in> \<lbrakk>F a\<rbrakk> M e})"
   by (subst Or_eq_exist; auto)
 
-fun Diamondlist :: "'a list \<Rightarrow> 'a formula \<Rightarrow> 'a formula " where
-"Diamondlist [] f = ff" |
-"Diamondlist (a # as) f = or (diamond a f) (Diamondlist as f)"
+fun Diamond :: "'a rexp \<Rightarrow> 'a formula \<Rightarrow> 'a formula " where 
+"Diamond Zero f = ff" |
+"Diamond One f = f" |
+"Diamond (Atom a) f = diamond a f" |
+"Diamond (Plus R Q) f = or (Diamond R f) (Diamond Q f)" |
+"Diamond (Times R Q) f = Diamond R (Diamond Q f)" |
+"Diamond (Star R) f =  mu (or (Diamond R (var 0)) (shiftup f 0))" 
 
-fun Diamond :: "'a regularformula \<Rightarrow> 'a formula \<Rightarrow> 'a formula " where 
-"Diamond eps f = f" |
-"Diamond (acts A) f = Diamondlist (if finite A then (SOME listA. set listA = A) else undefined) f" |
-"Diamond (after R Q) f = Diamond R (Diamond Q f)" |
-"Diamond (union R Q) f = or (Diamond R f) (Diamond Q f)" |
-"Diamond (repeat R) f =  mu (or (Diamond R (var 0)) (shiftup f 0))" 
-
-lemma Diamondlist_eq_exist : "\<lbrakk>Diamondlist A f\<rbrakk> M e = {s. \<exists> s' act. act \<in> set A \<and> (s, act, s') \<in> (transition M) \<and> s' \<in> \<lbrakk>f\<rbrakk> M e}"
-  by (induct A; simp; auto)
+lemma Diamondlist_eq_exist [simp] : 
+"\<lbrakk>Diamond (Actslist A) f\<rbrakk> M e = {s. \<exists> s' act. act \<in> set A \<and> (s, act, s') \<in> (transition M) \<and> s' \<in> \<lbrakk>f\<rbrakk> M e}"
+  by (induct A; auto)
 
 lemma Diamond_eq_exist [simp] : "finite A \<Longrightarrow>
-\<lbrakk>Diamond (acts A) f\<rbrakk> M e = {s. \<exists> s' act. act \<in> A \<and> (s, act, s') \<in> (transition M) \<and> s' \<in> \<lbrakk>f\<rbrakk> M e}"
-  apply (simp add: Diamondlist_eq_exist)
+\<lbrakk>Diamond (Acts A) f\<rbrakk> M e = {s. \<exists> s' act. act \<in> A \<and> (s, act, s') \<in> (transition M) \<and> s' \<in> \<lbrakk>f\<rbrakk> M e}"
+  apply (simp add: Acts_def)
   apply (rule someI2_ex; simp add: finite_list)
   done
 
 lemma shiftuptwice : "m \<le> i \<Longrightarrow> shiftup (shiftup f m) (Suc i) = shiftup (shiftup f i) m"
   by (induct f arbitrary : i m; simp)
 
-lemma shiftupDiamondlist [simp] : "shiftup (Diamondlist Alist f) i = Diamondlist Alist (shiftup f i)"
-  by (induct Alist; simp)
-
-lemma shiftupDiamond [simp] : "finitereg R \<Longrightarrow> shiftup (Diamond R f) i = Diamond R (shiftup f i)"
-  by (induction R arbitrary : i f; simp add: shiftuptwice)
+lemma shiftupDiamond [simp] : "shiftup (Diamond R f) i = Diamond R (shiftup f i)"
+  by (induct R arbitrary : i f; simp add: shiftuptwice)
 
 lemma shiftupdown : "m \<le> i \<Longrightarrow> shiftdown (shiftup f m) (Suc i) = shiftup (shiftdown f i) m"
   by (induct f arbitrary : i m; simp; arith)
 
-lemma shiftdownDiamondlist [simp] : "shiftdown (Diamondlist Alist f) i = Diamondlist Alist (shiftdown f i)"
-  by (induct Alist; simp)
+lemma shiftdownDiamond [simp] : "shiftdown (Diamond R f) i = Diamond R (shiftdown f i)"
+  by (induct R arbitrary : i f; simp add: shiftupdown)
 
-lemma shiftdownDiamond [simp] : "finitereg R \<Longrightarrow> shiftdown (Diamond R f) i = Diamond R (shiftdown f i)"
-  by (induction R arbitrary : i f; simp add: shiftupdown)
+fun Box :: "'a rexp \<Rightarrow> 'a formula \<Rightarrow> 'a formula " where 
+"Box Zero f = tt" |
+"Box One f = f" |
+"Box (Atom a) f = box a f" |
+"Box (Plus R Q) f = and' (Box R f) (Box Q f)" |
+"Box (Times R Q) f = Box R (Box Q f)" |
+"Box (Star R) f =  nu (and' (Box R (var 0)) (shiftup f 0))" 
 
-fun Boxlist :: "'a list \<Rightarrow> 'a formula \<Rightarrow> 'a formula " where
-"Boxlist [] f = tt" |
-"Boxlist (a # as) f = and' (box a f) (Boxlist as f)"
-
-fun Box :: "'a regularformula \<Rightarrow> 'a formula \<Rightarrow> 'a formula " where 
-"Box eps f = f" |
-"Box (acts A) f = Boxlist (if finite A then (SOME listA. set listA = A) else []) f" |
-"Box (after R Q) f = Box R (Box Q f)" |
-"Box (union R Q) f = and' (Box R f) (Box Q f)" |
-"Box (repeat R) f =  nu (and' (Box R (var 0)) (shiftup f 0))" 
-
-lemma Boxlist_eq_forall : "\<lbrakk>Boxlist A f\<rbrakk> M e = {s. \<forall> s' act. act \<in> set A \<and> (s, act, s') \<in> (transition M) \<longrightarrow> s' \<in> \<lbrakk>f\<rbrakk> M e}"
-  by (induct A; simp; auto)
+lemma Boxlist_eq_forall [simp] : "\<lbrakk>Box (Actslist A) f\<rbrakk> M e = {s. \<forall> s' act. act \<in> set A \<and> (s, act, s') \<in> (transition M) \<longrightarrow> s' \<in> \<lbrakk>f\<rbrakk> M e}"
+  by (induct A; auto)
 
 lemma Box_eq_forall [simp] : "finite A \<Longrightarrow>
-\<lbrakk>Box (acts A) f\<rbrakk> M e = {s. \<forall> s' act. act \<in> A \<and> (s, act, s') \<in> (transition M) \<longrightarrow> s' \<in> \<lbrakk>f\<rbrakk> M e}"
-  apply (simp add: Boxlist_eq_forall)
+\<lbrakk>Box (Acts A) f\<rbrakk> M e = {s. \<forall> s' act. act \<in> A \<and> (s, act, s') \<in> (transition M) \<longrightarrow> s' \<in> \<lbrakk>f\<rbrakk> M e}"
+  apply (simp add: Acts_def)
   apply (rule someI2_ex; simp add: finite_list)
   done
 
-lemma shiftupBoxlist [simp] : "shiftup (Boxlist Alist f) i = Boxlist Alist (shiftup f i)"
-  by (induct Alist; simp)
+lemma shiftupBox [simp] : "shiftup (Box R f) i = Box R (shiftup f i)"
+  by (induct R arbitrary : i f; simp add: shiftuptwice)
 
-lemma shiftupBox : "finitereg R \<Longrightarrow> shiftup (Box R f) i = Box R (shiftup f i)"
-  by (induction R arbitrary : i f; simp add: shiftuptwice)
+lemma shiftdownBox [simp] : "shiftdown (Box R f) i = Box R (shiftdown f i)"
+  by (induct R arbitrary : i f; simp add: shiftupdown)
 
-lemma shiftdownBoxlist [simp] : "shiftdown (Boxlist Alist f) i = Boxlist Alist (shiftdown f i)"
-  by (induct Alist; simp)
-
-lemma shiftdownBox [simp] : "finitereg R \<Longrightarrow> shiftdown (Box R f) i = Box R (shiftdown f i)"
-  by (induction R arbitrary : i f; simp add: shiftupdown)
+text \<open>Defining \<open>negvari\<close> to prove duality of mu and nu, and also proving definition on our extensions.\<close>
 
 fun negvari :: "'a formula \<Rightarrow> nat \<Rightarrow> 'a formula "
 where 
-  "(negvari tt i) = tt " |
-  "(negvari ff i) = ff" |
-  "(negvari (var X) i)  = (if i = X then (neg (var X)) else (var X))" |
-  "(negvari (neg f) i) = neg (negvari f i)" |
-  "(negvari (and' f f') i) = and' (negvari f i) (negvari f' i) " |
-  "(negvari (or f f') i) = or (negvari f i) (negvari f' i)" |
-  "(negvari (diamond act f) i) = diamond act (negvari f i) " |
-  "(negvari (box act f) i) = box act (negvari f i)" |
-  "(negvari (nu f) i) = nu (negvari f (Suc i))" |
-  "(negvari (mu f) i) = mu (negvari f (Suc i))"
+  "negvari tt i = tt " |
+  "negvari ff i = ff" |
+  "negvari (var X) i  = (if i = X then neg (var X) else var X)" |
+  "negvari (neg f) i = neg (negvari f i)" |
+  "negvari (and' f f') i = and' (negvari f i) (negvari f' i) " |
+  "negvari (or f f') i = or (negvari f i) (negvari f' i)" |
+  "negvari (diamond a f) i = diamond a (negvari f i) " |
+  "negvari (box a f) i = box a (negvari f i)" |
+  "negvari (nu f) i = nu (negvari f (Suc i))" |
+  "negvari (mu f) i = mu (negvari f (Suc i))"
 
 lemma negvarishiftup : "m \<le> i \<Longrightarrow> negvari (shiftup f m) (Suc i) = shiftup (negvari f i) m"
   by (induct f arbitrary : m i; simp)
 
-lemma negvariDiamondlist [simp] : "negvari (Diamondlist Alist f) i = Diamondlist Alist (negvari f i)"
-  by (induct Alist; simp)
-
-lemma negvariDiamond [simp] : "finitereg R \<Longrightarrow> negvari (Diamond R f) i = Diamond R (negvari f i)"
+lemma negvariDiamond [simp] : "negvari (Diamond R f) i = Diamond R (negvari f i)"
   by (induct R arbitrary : f i; simp add : negvarishiftup)
 
-lemma negvariBoxlist [simp] : "negvari (Boxlist Alist f) i = Boxlist Alist (negvari f i)"
-  by (induct Alist; simp)
-
-lemma negvariBox [simp] : "finitereg R \<Longrightarrow> negvari (Box R f) i = Box R (negvari f i)"
+lemma negvariBox [simp] : "negvari (Box R f) i = Box R (negvari f i)"
   by (induct R arbitrary : f i; simp add : negvarishiftup)
 
 value "negvari (or (var 0) (mu (and' (var 0) (var 1)))) 0 :: nat formula"
 
-section \<open>negate formulas\<close>
+section \<open>Proving duality of formulas.\<close>
 
 lemma negtrue [simp] : "\<lbrakk>neg tt\<rbrakk> M e = \<lbrakk>ff\<rbrakk> M e"
   by simp
@@ -352,8 +307,7 @@ lemma negdiamond : "\<lbrakk>neg (diamond act f)\<rbrakk> M e = \<lbrakk>box act
 
 lemma movenegvariin : "\<lbrakk>f\<rbrakk> M (e(i := -e(i))) = \<lbrakk>negvari f i\<rbrakk> M e"
   apply (induct f arbitrary : e i; simp; subgoal_tac "\<And>S'. \<lbrakk>f\<rbrakk> M (newenvironment e S') (Suc i := - e i) = \<lbrakk>negvari f (Suc i)\<rbrakk> M (newenvironment e S')")
-  apply simp
-  prefer 2 apply simp
+  apply simp_all
 proof-
   fix f e i S'
   assume "\<And>e i. \<lbrakk>f\<rbrakk> M e(i := - e i) = \<lbrakk>negvari f i\<rbrakk> M e"
@@ -377,12 +331,15 @@ proof-
   hence "\<Inter> {S'. S' \<supseteq> \<lbrakk>neg f\<rbrakk> M (newenvironment e (-S'))} = \<Inter> {S'. S' \<supseteq> \<lbrakk>neg (negvari f 0)\<rbrakk> M (newenvironment e S')}" by auto
   moreover have "\<lbrakk>neg (nu f)\<rbrakk> M e = (\<Inter> {S'. S' \<supseteq> \<lbrakk>neg f\<rbrakk> M (newenvironment e (-S'))})" using pushnegnu by metis
   ultimately show ?thesis by auto
-qed
+qed  
 
-lemma negvarnegvar [simp] : "\<lbrakk>(negvari (negvari f i) i)\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e"
+lemma negvarnegvar [simp] : "\<lbrakk>negvari (negvari f i) i\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e"
+  (*by (metis (mono_tags, opaque_lifting)
+      boolean_algebra_class.boolean_algebra.double_compl fun_upd_def fun_upd_triv
+      fun_upd_upd movenegvariin)*)
   by (induct f arbitrary : i e; simp)
 
-lemma negmu : "\<lbrakk>(neg (mu f))\<rbrakk> M e = \<lbrakk>(nu (neg (negvari f 0)))\<rbrakk> M e"
+lemma negmu : "\<lbrakk>neg (mu f)\<rbrakk> M e = \<lbrakk>nu (neg (negvari f 0))\<rbrakk> M e"
 proof-
   have "\<lbrakk>mu (neg (negvari (neg (negvari f 0)) 0))\<rbrakk> M e = \<lbrakk>neg (nu (neg (negvari f 0)))\<rbrakk> M e" by (simp only: negnu)
   hence "\<lbrakk>neg (mu (neg (negvari (neg (negvari f 0)) 0)))\<rbrakk> M e = \<lbrakk>neg (neg (nu (neg (negvari f 0))))\<rbrakk> M e" by auto
@@ -402,41 +359,57 @@ where
   "(occursvari (nu f) i) = (occursvari f (Suc i))" |
   "(occursvari (mu f) i) = (occursvari f (Suc i))"
 
-fun emptyreg :: "'a regularformula \<Rightarrow> bool" where
-  "emptyreg eps = False" | 
-  "emptyreg (acts A) = (A = {})" |
-  "emptyreg (after R Q) = (emptyreg R \<or> emptyreg Q)" |
-  "emptyreg (union R Q) = (emptyreg R \<and> emptyreg Q)" | 
-  "emptyreg (repeat R) = False"
-
-lemma emptyregdef : "emptyreg R = (regformtolanguage R = {})"
-  apply (induct R; simp)
+lemma closedformula : "((\<forall>i \<ge> j. \<not>occursvari f i) \<and> (\<forall>i < j. e i = e' i)) \<longrightarrow> \<lbrakk>f\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e'"
+  apply (induct f arbitrary: e e' j; simp)
+  using linorder_le_less_linear apply blast
   apply blast
-  using formpow.simps apply blast
-  done
+  apply blast
+  apply (rule impI; subgoal_tac "\<And>S'. \<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M (newenvironment e' S')")
+  apply simp
+  prefer 2 
+  apply (rule impI; subgoal_tac "\<And>S'. \<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M (newenvironment e' S')")
+  apply simp
+proof-
+  fix f j
+  fix e e' :: "nat \<Rightarrow> 'b set"
+  fix S' :: "'b set"
+  assume "(\<And>e e' j. (\<forall>i\<ge>j. \<not> occursvari f i) \<and> (\<forall>i<j. e i = e' i) \<longrightarrow> \<lbrakk>f\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e')"
+  moreover {
+    assume "\<forall>i\<ge>j. \<not> occursvari f (Suc i)"
+    hence "\<forall>i \<ge> Suc j. \<not> occursvari f i" using Suc_le_D by auto 
+  }
+  moreover {
+    assume assum1 : "\<forall>i<j. e i = e' i"
+    have "\<forall>i<Suc j. newenvironment e S' i = newenvironment e' S' i" 
+      by (rule; induct_tac i; simp add: assum1)
+  }
+  moreover assume "(\<forall>i\<ge>j. \<not> occursvari f (Suc i)) \<and> (\<forall>i<j. e i = e' i)"
+  ultimately show "\<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M (newenvironment e' S')" by auto
+  thus "\<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M (newenvironment e' S')" by simp
+qed
+
+lemma closedformulacoro : "(\<And>i. \<not>occursvari f i) \<Longrightarrow> \<lbrakk>f\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e'"
+  using closedformula less_nat_zero_code by metis
+
+fun emptyreg :: "'a rexp \<Rightarrow> bool" where
+  "emptyreg Zero = True" | 
+  "emptyreg One = False" | 
+  "emptyreg (Atom a) = False" |
+  "emptyreg (Plus R Q) = (emptyreg R \<and> emptyreg Q)" |
+  "emptyreg (Times R Q) = (emptyreg R \<or> emptyreg Q)" | 
+  "emptyreg (Star R) = False"
+
+lemma emptyregdef : "emptyreg R = (lang R = {})"
+  by (induct R; auto)
 
 lemma occursvarishiftup : "m \<le> i \<Longrightarrow> occursvari (shiftup f m) (Suc i) = occursvari f i"
   by (induct f arbitrary : i m; simp)
 
-lemma occursDiamondlist [simp] : "occursvari (Diamondlist Alist f) i = (occursvari f i \<and> \<not>(Alist = []))"
-  by (induct Alist arbitrary : f i; simp; blast)
+lemma occursDiamond [simp] : "(occursvari (Diamond R f) i) = (occursvari f i \<and> \<not>emptyreg R)"
+  by (induct R arbitrary : f i; simp add : occursvarishiftup; auto)
 
-lemma occursDiamond [simp] : "finitereg R \<Longrightarrow> (occursvari (Diamond R f) i) = (occursvari f i \<and> \<not>emptyreg R)"
-  apply (induct R arbitrary : f i; simp add : occursvarishiftup)
-  apply (rule someI2_ex)
-  apply (simp add: finite_list)
-  apply auto
-  done
-
-lemma occursBoxlist [simp] : "occursvari (Boxlist Alist f) i = (occursvari f i \<and> \<not>(Alist = []))"
-  by (induct Alist arbitrary : f i; simp; blast)
-
-lemma occursBox [simp] : "finitereg R \<Longrightarrow> (occursvari (Box R f) i) = (occursvari f i \<and> \<not>emptyreg R)"
-  apply (induct R arbitrary : f i; simp add : occursvarishiftup)
-  apply (rule someI2_ex)
-  apply (simp add: finite_list)
-  apply auto
-  done
+lemma occursBox [simp] : "(occursvari (Box R f) i) = (occursvari f i \<and> \<not>emptyreg R)"
+  by (induct R arbitrary : f i; simp add : occursvarishiftup; auto)
 
 definition transformer :: "'a formula \<Rightarrow> ('a, 's) lts \<Rightarrow> (nat \<Rightarrow> 's set) \<Rightarrow> 's set \<Rightarrow> 's set "
   where
@@ -447,6 +420,127 @@ lemma transformerdef : "transformer f M e = (\<lambda>S'. \<lbrakk>f\<rbrakk> M 
 
 definition dependvari :: "'a formula \<Rightarrow> ('a, 's) lts \<Rightarrow> nat \<Rightarrow> bool" where
 "dependvari f M i = (\<exists>e S'. \<lbrakk>f\<rbrakk> M e \<noteq> \<lbrakk>f\<rbrakk> M (e(i := S')))"
+
+lemma dependvarX : "dependvari (var X) M i = (X = i)"
+  by (auto simp: dependvari_def)
+
+lemma dependvarineg : "dependvari (neg f) M i = dependvari f M i"
+  by (simp add: dependvari_def)
+
+lemma dependvariandor : "\<not>dependvari f1 M i \<and> \<not>dependvari f2 M i \<Longrightarrow> \<not>dependvari (and' f1 f2) M i \<and> \<not>dependvari (or f1 f2) M i"
+  by (simp add: dependvari_def)
+
+lemma dependvariboxdiamond : "\<not>dependvari f M i  \<Longrightarrow> \<not>dependvari (box a f) M i \<and> \<not>dependvari (diamond a f) M i"
+  by (simp add: dependvari_def)
+
+lemma dependvarinumu : "\<not>dependvari f M (Suc i)  \<Longrightarrow> \<not>dependvari (nu f) M i \<and> \<not>dependvari (mu f) M i"
+  by (simp add: dependvari_def)
+
+lemma notoccursnotdepends : "\<not>occursvari f i \<longrightarrow> \<not>dependvari f M i"
+  apply (induct f arbitrary: i; simp add: dependvarineg dependvariandor dependvariboxdiamond dependvarinumu)
+  apply (simp_all add: dependvari_def)
+  done
+
+lemma dependsoccurs : "dependvari f M i \<Longrightarrow> occursvari f i"
+  using notoccursnotdepends by auto
+
+lemma concsubst : "length e = Suc i \<Longrightarrow> (conc (take i e) (S' ## env)) (i := e!i) = conc e env" 
+proof
+  fix j
+  assume assum1: "length e = Suc i"
+  have "j < i \<or> j = i \<or> j \<ge> Suc i" by auto
+  moreover {
+    assume "j < i"
+    hence "((conc (take i e) (S' ## env)) (i := e ! i)) j = (conc e env) j" using assum1 by auto
+  }
+  moreover {
+    assume "j = i"
+    hence "((conc (take i e) (S' ## env)) (i := e ! i)) j = (conc e env) j" using assum1 by auto
+  }
+  moreover {
+    assume "j \<ge> Suc i"
+    hence "j - i = Suc (j - Suc i)" by auto
+    hence "((conc (take i e) (S' ## env)) (i := e ! i)) j = (conc e env) j" using assum1 by auto
+  }
+  ultimately show "((conc (take i e) (S' ## env)) (i := e ! i)) j = (conc e env) j" by auto
+qed
+
+lemma notdependfirstpart : "(\<forall>i < j. \<not>dependvari f M i) \<and> (length e = length e' \<and> length e \<le> j)
+    \<Longrightarrow> \<lbrakk>f\<rbrakk> M (conc e env) = \<lbrakk>f\<rbrakk> M (conc e' env)"
+  apply (induct j arbitrary: e e' env)
+  apply auto[1]
+proof-
+  fix j env
+  fix e e' :: "'b set list"
+  assume assum1 : "(\<And>e e' env. (\<forall>i<j. \<not> dependvari f M i) \<and> length e = length e' \<and> length e \<le> j \<Longrightarrow> \<lbrakk>f\<rbrakk> M (conc e env) = \<lbrakk>f\<rbrakk> M (conc e' env))"
+  assume assum2 : "(\<forall>i<Suc j. \<not> dependvari f M i) \<and> length e = length e' \<and> length e \<le> Suc j"
+  hence " length e = Suc j \<or> length e \<le> j" by auto
+  moreover {
+    have "\<lbrakk>f\<rbrakk> M (conc (take j e) (env 0 ## env)) = \<lbrakk>f\<rbrakk> M (conc (take j e') (env 0 ## env))" by (simp add: assum1 assum2)
+    hence "\<lbrakk>f\<rbrakk> M ((conc (take j e) (env 0 ## env)) (j := e!j)) = \<lbrakk>f\<rbrakk> M ((conc (take j e') (env 0 ## env)) (j := e'!j))" using assum2 by (simp add: dependvari_def)
+    moreover assume "length e = Suc j"
+    ultimately have "\<lbrakk>f\<rbrakk> M (conc e env) = \<lbrakk>f\<rbrakk> M (conc e' env)" using concsubst assum2 by metis 
+  }
+  moreover {
+    assume "length e \<le> j"
+    moreover have "(\<forall>i<j. \<not> dependvari f M i) \<and> length e = length e'" using assum2 by auto
+    ultimately have "\<lbrakk>f\<rbrakk> M (conc e env) = \<lbrakk>f\<rbrakk> M (conc e' env)" using assum1 by metis
+  }
+  ultimately show "\<lbrakk>f\<rbrakk> M (conc e env) = \<lbrakk>f\<rbrakk> M (conc e' env)" by auto
+qed
+
+lemma existsmaxoccurs : "\<exists>j. \<forall>i \<ge> j. \<not>occursvari f i"
+  apply (induct f; simp)
+  using Suc_n_not_le_n apply blast
+proof-
+  fix f1 f2 :: "'a formula"
+  assume "\<exists>j. \<forall>i\<ge>j. \<not> occursvari f1 i"
+  moreover assume "\<exists>j. \<forall>i\<ge>j. \<not> occursvari f2 i"
+  ultimately obtain j j' where "(\<forall>i\<ge>j. \<not> occursvari f1 i) \<and> (\<forall>i\<ge>j'. \<not> occursvari f2 i)" by auto
+  hence "\<forall>i\<ge>(max j j'). \<not> occursvari f1 i \<and>  \<not> occursvari f2 i" by simp
+  thus "\<exists>j. \<forall>i\<ge>j. \<not> occursvari f1 i \<and>  \<not> occursvari f2 i" by blast
+  thus "\<exists>j. \<forall>i\<ge>j. \<not> occursvari f1 i \<and>  \<not> occursvari f2 i" by simp
+next
+  fix f :: "'a formula"
+  assume "\<exists>j. \<forall>i\<ge>j. \<not> occursvari f i"
+  from this obtain j where "\<forall>i\<ge>j. \<not> occursvari f i" by auto
+  hence "\<forall>i\<ge>Suc j. \<not> occursvari f (Suc i)" by simp
+  thus "\<exists>j. \<forall>i\<ge>j. \<not> occursvari f (Suc i)" by blast
+  thus "\<exists>j. \<forall>i\<ge>j. \<not> occursvari f (Suc i)" by simp
+qed
+
+lemma notdependlastpart : "(\<forall>i\<ge>length elist. \<not>occursvari f i) \<longrightarrow> \<lbrakk>f\<rbrakk> M (conc elist e) = \<lbrakk>f\<rbrakk> M (conc elist e')"
+  apply (induct f arbitrary : e e' elist; simp; rule impI)
+  apply (subgoal_tac "x < length elist")
+  apply simp
+  apply arith
+  apply blast
+  apply blast
+  apply blast
+  apply blast
+proof-
+  fix f e e' 
+  fix elist :: "'a set list"
+  assume assum1: "(\<And>e e' elist. (\<forall>i\<ge>length elist. \<not> occursvari f i) \<longrightarrow> \<lbrakk>f\<rbrakk> M (elist \<frown> e) = \<lbrakk>f\<rbrakk> M (elist \<frown> e'))"
+  assume "\<forall>i\<ge>length elist. \<not> occursvari f (Suc i)"
+  hence "\<forall>i \<ge> Suc (length elist). \<not> occursvari f i" using Suc_le_D by auto
+  moreover have "\<And>S'. length (S' # elist) = Suc (length elist)" by simp
+  ultimately have conclusion : "\<And>S'. \<lbrakk>f\<rbrakk> M (newenvironment (conc elist e) S') = \<lbrakk>f\<rbrakk> M (newenvironment (conc elist e') S')" using assum1 build_cons by metis
+  thus "\<Union> {S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment (conc elist e) S')} = \<Union> {S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment (conc elist e') S')}" by auto
+  thus "\<Inter> {S'. \<lbrakk>f\<rbrakk> M (newenvironment (conc elist e) S') \<subseteq> S'} = \<Inter> {S'. \<lbrakk>f\<rbrakk> M (newenvironment (conc elist e') S') \<subseteq> S'}" using conclusion by auto
+qed
+
+lemma notdependchangeenv : "(\<And>i. \<not>dependvari f M i) \<Longrightarrow> \<lbrakk>f\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e'"
+proof-
+  obtain j where assum1:"\<forall>i \<ge> j. \<not>occursvari f i" using existsmaxoccurs by auto
+  assume "\<And>i. \<not>dependvari f M i"
+  hence "\<forall>i<j. \<not>dependvari f M i" by auto
+  moreover have "length (prefix j e) = length (prefix j e') \<and> length (prefix j e) \<le> j" by auto
+  ultimately have res1: "\<lbrakk>f\<rbrakk> M (conc (prefix j e) (suffix j e)) = \<lbrakk>f\<rbrakk> M (conc (prefix j e') (suffix j e))" using notdependfirstpart by metis
+  have "length (prefix j e') = j" by auto
+  hence res2: "\<lbrakk>f\<rbrakk> M (conc (prefix j e') (suffix j e)) = \<lbrakk>f\<rbrakk> M (conc (prefix j e') (suffix j e'))" using assum1 notdependlastpart by metis
+  show ?thesis using res1 res2 by auto
+qed
 
 lemma notdependseqnu :
   assumes "\<not> dependvari f M 0"
@@ -489,6 +583,9 @@ lemma orsubset :
   shows "A\<^sub>1 \<subseteq> B\<^sub>1 \<union> B\<^sub>2 \<or> A\<^sub>2 \<subseteq> B\<^sub>1 \<union> B\<^sub>2"
   using assms by auto
 
+text \<open>Defining function \<open>notdependalloccursposnegi\<close> that can be evaluated on formulas and
+proving that this evaluation can imply monotonicity (or antimonotonicity).\<close>
+
 fun notdependalloccursposnegi :: "'a formula \<Rightarrow> ('a ,'s) lts \<Rightarrow> nat \<Rightarrow> bool \<Rightarrow> bool"
 where 
   "(notdependalloccursposnegi tt M i b) = True " |
@@ -502,30 +599,9 @@ where
   "(notdependalloccursposnegi (nu f) M i b) = (\<not>dependvari (nu f) M i \<or> notdependalloccursposnegi f M (Suc i) b)" |
   "(notdependalloccursposnegi (mu f) M i b) = (\<not>dependvari (mu f) M i \<or> notdependalloccursposnegi f M (Suc i) b)"
 
-lemma dependvarineg : "dependvari (neg f) M i = dependvari f M i"
-  by (simp add: dependvari_def)
-
-lemma dependvariandor : "\<not>dependvari f1 M i \<and> \<not>dependvari f2 M i \<Longrightarrow> \<not>dependvari (and' f1 f2) M i \<and> \<not>dependvari (or f1 f2) M i"
-  by (simp add: dependvari_def)
-
-lemma dependvariboxdiamond : "\<not>dependvari f M i  \<Longrightarrow> \<not>dependvari (box a f) M i \<and> \<not>dependvari (diamond a f) M i"
-  by (simp add: dependvari_def)
-
-lemma dependvarinumu : "\<not>dependvari f M (Suc i)  \<Longrightarrow> \<not>dependvari (nu f) M i \<and> \<not>dependvari (mu f) M i"
-  by (simp add: dependvari_def)
-
-lemma notoccursnotdepends : "\<not>occursvari f i \<longrightarrow> \<not>dependvari f M i"
-  apply (induct f arbitrary: i; simp add: dependvarineg dependvariandor dependvariboxdiamond dependvarinumu)
-  apply (simp_all add: dependvari_def)
-  done
-
-lemma dependsoccurs : "dependvari f M i \<Longrightarrow> occursvari f i"
-  using notoccursnotdepends by auto
-
 lemma notdepends : "\<not>dependvari f M i \<Longrightarrow> notdependalloccursposnegi f M i b"
   apply (induct f arbitrary : i b; simp add: dependvari_def)
   apply (rule impI)
-  apply (subgoal_tac "{} = UNIV")
   apply auto
   done
 
@@ -651,7 +727,7 @@ next
   thus "notdependalloccursposnegi f M 0 False \<Longrightarrow> antimono (\<lambda>S'.(\<lbrakk>f\<rbrakk> M (newenvironment e S')))" by auto
 qed
 
-section \<open>approximation of \<open>nu\<close> and \<open>mu\<close>\<close>
+section \<open>Approximation of \<open>nu\<close> and \<open>mu\<close>.\<close>
 
 lemma gfp_eq_nu [simp] :
 "gfp (transformer f M e) = \<lbrakk>nu f\<rbrakk> M e"
@@ -742,7 +818,7 @@ proof (rule ccontr)
 qed
 
 lemma gfp_monofin [simp] :
-  assumes "(finite (UNIV :: 's set))"
+  assumes "finite (UNIV :: 's set)"
   and "mono (f :: 's set \<Rightarrow> 's set)"
   shows "(f^^(card (UNIV :: 's set))) UNIV = gfp f"
 proof-
@@ -754,7 +830,7 @@ proof-
 qed
 
 lemma lfp_monofin [simp] :
-  assumes "(finite (UNIV :: 's set))"
+  assumes "finite (UNIV :: 's set)"
   and "mono (f :: 's set \<Rightarrow> 's set)"
   shows "(f^^(card (UNIV :: 's set))) {} = lfp f"
 proof-
