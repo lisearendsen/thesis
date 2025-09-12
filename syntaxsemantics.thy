@@ -165,6 +165,71 @@ lemma shiftupanddown : "shiftdown (shiftup f i) i = f"
 definition shiftdownenv :: "(nat \<Rightarrow> 's set) \<Rightarrow> nat \<Rightarrow> (nat \<Rightarrow> 's set) " where
 "shiftdownenv e i n = (if n < i then e n else e (n + 1))"
 
+lemma shiftdownnewenv_eq_newenvshiftdown [simp] : "shiftdownenv (newenvironment e S') (Suc i) = newenvironment (shiftdownenv e i) S'"
+  apply (rule)
+  apply (induct_tac x)
+  apply (simp_all add: shiftdownenv_def)
+  done
+
+lemma shiftdownnewenvzero_eq_newenv [simp] : "shiftdownenv (newenvironment e S') 0 = e"
+  apply (rule)
+  apply (induct_tac x; simp add: shiftdownenv_def)
+  done
+
+lemma switchnewenvironmentshiftdown : "\<lbrakk>shiftdown f (Suc i)\<rbrakk> M (newenvironment (shiftdownenv e i) S') = 
+  \<lbrakk>shiftdown f (Suc i)\<rbrakk> M (shiftdownenv (newenvironment e S') (Suc i))"
+  by simp
+
+definition envrepeati :: "(nat \<Rightarrow> 's set) \<Rightarrow> nat \<Rightarrow> (nat \<Rightarrow> 's set) " where
+"envrepeati e i \<equiv> conc (prefix (Suc i) e) (suffix i e)"
+
+lemma envrepeatidef :  "envrepeati e i = (\<lambda>j. if j > Suc i then e (j - Suc 0) else (if j \<le> i then e j else e i))"
+proof
+  fix j
+  {
+    assume assum1 : "Suc i < j"
+    hence "\<not>j < length (prefix (Suc i) e)" by simp
+    hence "conc (prefix (Suc i) e) (suffix i e) j = suffix i e (j - length (prefix (Suc i) e))" using conc_snd by metis
+    hence "conc (prefix (Suc i) e) (suffix i e) j = e (j - Suc 0)" using assum1 by simp
+  }
+  moreover {
+    assume "j \<le> i"
+    hence "j < length (prefix (Suc i) e)" by auto
+    hence "conc (prefix (Suc i) e) (suffix i e) j = e j" using prefix_suffix conc_fst by metis
+  }
+  moreover {
+    assume "\<not>Suc i < j"
+    moreover assume "\<not>j \<le> i"
+    ultimately have "j = Suc i" by auto
+    hence "conc (prefix (Suc i) e) (suffix i e) j = e i" by auto
+  }
+  ultimately show "envrepeati e i j = (if Suc i < j then e (j - Suc 0) else if j \<le> i then e j else e i)" using envrepeati_def by metis
+qed
+
+lemma newenvenvrepeatswitch : "newenvironment (envrepeati e i) S' = envrepeati (newenvironment e S') (Suc i)"
+  apply (rule)
+  apply (induct_tac x; simp add: envrepeatidef)
+proof (rule impI)+
+  fix n
+  assume "Suc i < n"
+  hence "n > Suc 0" by auto
+  thus "e (n - Suc 0) = newenvironment e S' n" by (induct n; simp)
+qed
+
+lemma shiftdownenvrepeat : "\<lbrakk>shiftdown f i\<rbrakk> M e = \<lbrakk>f\<rbrakk> M (envrepeati e i)"
+  apply (induct f arbitrary: e i; simp add: shiftdownenv_def newenvenvrepeatswitch)
+  apply (simp add: envrepeatidef)
+  apply (intro impI)
+  apply (subgoal_tac "x = Suc i"; auto)
+  done
+
+lemma shiftdownnewenv : "\<lbrakk>f\<rbrakk> M (newenvironment e (e 0)) = \<lbrakk>shiftdown f 0\<rbrakk> M e "
+  apply (subgoal_tac "envrepeati e 0 = newenvironment e (e 0)")
+  apply (simp add: shiftdownenvrepeat)
+  apply rule
+  apply (induct_tac x; simp add: envrepeati_def)
+  done
+
 text \<open>Defining extensions of the mu calculus, specifically \<open>And\<close>, \<open>Or\<close>, \<open>Diamond\<close>, and \<open>Box\<close>.\<close>
 
 fun Andlist :: "'a list \<Rightarrow> ('a \<Rightarrow> 'a formula) \<Rightarrow> 'a formula " where
@@ -359,6 +424,22 @@ where
   "(occursvari (nu f) i) = (occursvari f (Suc i))" |
   "(occursvari (mu f) i) = (occursvari f (Suc i))"
 
+lemma shiftdown_shiftdownenv [simp] : "\<not> occursvari f i \<longrightarrow> \<lbrakk>shiftdown f i\<rbrakk> M (shiftdownenv e i) = \<lbrakk>f\<rbrakk> M e"
+  apply (induct f arbitrary: e i; simp add: shiftdownenv_def; (arith|rule impI); subst switchnewenvironmentshiftdown)
+proof-
+  fix f e i
+  assume assum1 : "(\<And>e i. \<not> occursvari f i \<longrightarrow> (formulasemantics (shiftdown f i) M (shiftdownenv e i)) = (formulasemantics f M e))"
+  assume assum2 : "\<not> occursvari f (Suc i)"
+  hence "\<forall>S'. formulasemantics (shiftdown f (Suc i)) M (shiftdownenv (newenvironment e S') (Suc i)) = formulasemantics f M (newenvironment e S')" using assum1 by blast
+  thus "\<Inter> {S'. \<lbrakk>shiftdown f (Suc i)\<rbrakk> M (shiftdownenv (newenvironment e S') (Suc i)) \<subseteq> S'} = \<Inter> {S'. \<lbrakk>f\<rbrakk> M (newenvironment e S') \<subseteq> S'}" by auto
+next
+  fix f e i
+  assume assum1 : "(\<And>e i. \<not> occursvari f i \<longrightarrow> (formulasemantics (shiftdown f i) M (shiftdownenv e i)) = (formulasemantics f M e))"
+  assume assum2 : "\<not> occursvari f (Suc i)"
+  hence "\<forall>S'. formulasemantics (shiftdown f (Suc i)) M (shiftdownenv (newenvironment e S') (Suc i)) = formulasemantics f M (newenvironment e S')" using assum1 by blast
+  thus "\<Union> {S'. S' \<subseteq> \<lbrakk>shiftdown f (Suc i)\<rbrakk> M (shiftdownenv (newenvironment e S') (Suc i))} = \<Union> {S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}" by auto
+qed
+
 lemma closedformula : "((\<forall>i \<ge> j. \<not>occursvari f i) \<and> (\<forall>i < j. e i = e' i)) \<longrightarrow> \<lbrakk>f\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e'"
   apply (induct f arbitrary: e e' j; simp)
   using linorder_le_less_linear apply blast
@@ -420,6 +501,15 @@ lemma transformerdef : "transformer f M e = (\<lambda>S'. \<lbrakk>f\<rbrakk> M 
 
 definition dependvari :: "'a formula \<Rightarrow> ('a, 's) lts \<Rightarrow> nat \<Rightarrow> bool" where
 "dependvari f M i = (\<exists>e S'. \<lbrakk>f\<rbrakk> M e \<noteq> \<lbrakk>f\<rbrakk> M (e(i := S')))"
+
+lemma notdependshiftdown : "\<not>dependvari f M 0 \<Longrightarrow> \<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>shiftdown f 0\<rbrakk> M e"
+proof- 
+  assume "\<not>dependvari f M 0"
+  hence "\<lbrakk>f\<rbrakk> M (newenvironment e (e 0)) = \<lbrakk>f\<rbrakk> M (newenvironment e (e 0))(0 := S')" using dependvari_def by metis
+  moreover have "\<lbrakk>f\<rbrakk> M (newenvironment e (e 0)) = \<lbrakk>shiftdown f 0\<rbrakk> M e" using shiftdownnewenv by metis
+  moreover have "(newenvironment e (e 0))(0 := S') = newenvironment e S'" by simp
+  ultimately show ?thesis by (simp add: shiftdownenvrepeat)
+qed
 
 lemma dependvarX : "dependvari (var X) M i = (X = i)"
   by (auto simp: dependvari_def)
