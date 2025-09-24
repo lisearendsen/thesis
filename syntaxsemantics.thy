@@ -472,6 +472,15 @@ qed
 lemma closedformulacoro : "(\<And>i. \<not>occursvari f i) \<Longrightarrow> \<lbrakk>f\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e'"
   using closedformula less_nat_zero_code by metis
 
+lemma shiftupnotoccurs [simp] : "\<not>(occursvari (shiftup f i) i)"
+  by (induct f arbitrary : i; simp)
+
+lemma shiftuplemma [simp] : "\<lbrakk>shiftup f 0\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M e"
+proof-
+  have "(formulasemantics (shiftdown (shiftup f 0) 0) M (shiftdownenv (newenvironment e S') 0)) = (formulasemantics (shiftup f 0) M (newenvironment e S'))" using shiftupnotoccurs shiftdown_shiftdownenv by metis
+  thus "(formulasemantics (shiftup f 0) M (newenvironment e S')) = (formulasemantics f M e)" using shiftupanddown shiftdownnewenvzero_eq_newenv by metis
+qed
+
 fun emptyreg :: "'a rexp \<Rightarrow> bool" where
   "emptyreg Zero = True" | 
   "emptyreg One = False" | 
@@ -526,6 +535,9 @@ lemma dependvariboxdiamond : "\<not>dependvari f M i  \<Longrightarrow> \<not>de
 lemma dependvarinumu : "\<not>dependvari f M (Suc i)  \<Longrightarrow> \<not>dependvari (nu f) M i \<and> \<not>dependvari (mu f) M i"
   by (simp add: dependvari_def)
 
+lemma shiftup_envrepeati [simp] : "\<lbrakk>shiftup f m\<rbrakk> M (envrepeati e m) = \<lbrakk>f\<rbrakk> M e"
+  using shiftdownenvrepeat shiftupanddown by metis
+
 lemma notoccursnotdepends : "\<not>occursvari f i \<longrightarrow> \<not>dependvari f M i"
   apply (induct f arbitrary: i; simp add: dependvarineg dependvariandor dependvariboxdiamond dependvarinumu)
   apply (simp_all add: dependvari_def)
@@ -533,6 +545,45 @@ lemma notoccursnotdepends : "\<not>occursvari f i \<longrightarrow> \<not>depend
 
 lemma dependsoccurs : "dependvari f M i \<Longrightarrow> occursvari f i"
   using notoccursnotdepends by auto
+
+lemma dependvarishiftup [simp] : "m \<le> i \<Longrightarrow> dependvari (shiftup f m) M (Suc i) = dependvari f M i" 
+  apply (simp add: dependvari_def)
+proof
+  assume "\<exists>e S'. \<lbrakk>shiftup f m\<rbrakk> M e \<noteq> \<lbrakk>shiftup f m\<rbrakk> M e(Suc i := S')"
+  from this obtain e S' where "\<lbrakk>shiftup f m\<rbrakk> M e \<noteq> \<lbrakk>shiftup f m\<rbrakk> M e(Suc i := S')" by auto
+  hence "\<lbrakk>shiftdown (shiftup f m) m\<rbrakk> M (shiftdownenv e m) \<noteq> \<lbrakk>shiftdown (shiftup f m) m\<rbrakk> M (shiftdownenv (e(Suc i := S')) m)" by simp
+  moreover assume "m \<le> i"
+  moreover have "m \<le> i \<Longrightarrow> (shiftdownenv (e(Suc i := S')) m) = (shiftdownenv e m)(i := S')" by (rule; simp add: shiftdownenv_def)
+  ultimately have "\<lbrakk>f\<rbrakk> M (shiftdownenv e m) \<noteq> \<lbrakk>f\<rbrakk> M (shiftdownenv e m)(i := S')" by (simp add: shiftupanddown)
+  thus "\<exists>e S'. \<lbrakk>f\<rbrakk> M e \<noteq> \<lbrakk>f\<rbrakk> M e(i := S')" by auto
+next
+  assume "\<exists>e S'. \<lbrakk>f\<rbrakk> M e \<noteq> \<lbrakk>f\<rbrakk> M e(i := S')"
+  from this obtain e S' where "\<lbrakk>f\<rbrakk> M e \<noteq> \<lbrakk>f\<rbrakk> M e(i := S')" by auto
+  moreover have "\<not>dependvari (shiftup f m) M m" using shiftupnotoccurs notoccursnotdepends by blast
+  ultimately have "\<lbrakk>shiftup f m\<rbrakk> M (envrepeati e m) \<noteq> \<lbrakk>shiftup f m\<rbrakk> M (envrepeati (e(i := S')) m) (m := e m)" by (simp add: dependvari_def)
+  moreover assume "m \<le> i"
+  moreover have "m \<le> i \<Longrightarrow>((envrepeati (e(i := S')) m) (m := e m)) = (envrepeati e m) (Suc i := S')" by (rule; simp add: envrepeatidef; arith)
+  ultimately have "\<lbrakk>shiftup f m\<rbrakk> M (envrepeati e m) \<noteq> \<lbrakk>shiftup f m\<rbrakk> M (envrepeati e m)(Suc i := S')" by simp
+  thus "\<exists>e S'. \<lbrakk>shiftup f m\<rbrakk> M e \<noteq> \<lbrakk>shiftup f m\<rbrakk> M e(Suc i := S')" by auto
+qed
+
+(*how to apply tactic exactly 5 times*)
+lemma dependvariBoxDiamond : "\<not>dependvari f M i  \<Longrightarrow> \<not>dependvari (Box R f) M i \<and> \<not>dependvari (Diamond R f) M i"
+  apply (induct R arbitrary: f i)
+  apply (simp add: dependvari_def)
+  apply (simp add: dependvari_def)
+  apply (simp add: dependvari_def)
+  apply (simp add: dependvari_def)
+  apply (simp add: dependvari_def)
+  unfolding Box.simps Diamond.simps
+proof-
+  fix R f i
+  assume "\<And>f i. \<not> dependvari f M i \<Longrightarrow> \<not> dependvari (Box R f) M i \<and> \<not> dependvari (Diamond R f) M i"
+  moreover assume "\<not> dependvari f M i"
+  moreover have "\<not> dependvari (var 0) M (Suc i)" using dependvarX by auto
+  ultimately have "\<not> dependvari (Box R (var 0)) M (Suc i) \<and> \<not> dependvari (shiftup f 0) M (Suc i) \<and> \<not> dependvari (Diamond R (var 0)) M (Suc i)" using dependvarishiftup by blast
+  thus "\<not> dependvari (nu (and' (Box R (var 0)) (shiftup f 0))) M i \<and> \<not> dependvari (mu (or (Diamond R (var 0)) (shiftup f 0))) M i" using dependvarinumu dependvariandor by blast
+qed
 
 lemma concsubst : "length e = Suc i \<Longrightarrow> (conc (take i e) (S' ## env)) (i := e!i) = conc e env" 
 proof
@@ -694,6 +745,36 @@ lemma notdepends : "\<not>dependvari f M i \<Longrightarrow> notdependalloccursp
   apply (rule impI)
   apply auto
   done
+
+(*opschonen*)
+lemma notdependalloccursposnegi_shiftup : "m \<le> i \<Longrightarrow> notdependalloccursposnegi (shiftup f m) M (Suc i) b = notdependalloccursposnegi f M i b"
+  apply (induct f arbitrary: b m i; simp)
+  apply (metis dependvarishiftup shiftup.simps(5))
+  apply (metis dependvarishiftup shiftup.simps(6))
+  apply (metis dependvarishiftup shiftup.simps(8))
+  apply (metis dependvarishiftup shiftup.simps(7))
+  apply (metis dependvarishiftup shiftup.simps(9))
+  apply (metis dependvarishiftup shiftup.simps(10))
+  done
+
+(*opschonen*)
+lemma notdependalloccursposnegi_Diamond [simp] : "notdependalloccursposnegi (Diamond R f) M i b = (\<not>dependvari (Diamond R f) M i \<or> notdependalloccursposnegi f M i b)"
+  apply (induct R arbitrary: f i b)
+  apply (simp add: dependvari_def)
+  using notdepends apply auto[1]
+  apply (simp add: dependvari_def)
+  using dependvariandor apply fastforce
+  apply simp
+  using dependvariBoxDiamond apply fastforce
+proof-
+  fix R f i b
+  assume IH : "\<And>f i b. notdependalloccursposnegi (Diamond R f) M i b = (\<not> dependvari (Diamond R f) M i \<or> notdependalloccursposnegi f M i b)"
+  have "notdependalloccursposnegi (Diamond (Star R) f) M i b = (\<not> dependvari (Diamond (Star R) f) M i \<or> \<not> dependvari (or (Diamond R (var 0)) (shiftup f 0)) M (Suc i) \<or> (notdependalloccursposnegi (Diamond R (var 0)) M (Suc i) b \<and> notdependalloccursposnegi (shiftup f 0) M (Suc i) b))" by simp
+  hence "notdependalloccursposnegi (Diamond (Star R) f) M i b = (\<not> dependvari (Diamond (Star R) f) M i \<or> \<not> dependvari (shiftup f 0) M (Suc i) \<or> notdependalloccursposnegi (shiftup f 0) M (Suc i) b)"
+    by (metis Diamond.simps(6) IH dependvarX dependvarinumu nat.distinct(1) notdepends)
+  moreover have "notdependalloccursposnegi (shiftup f 0) M (Suc i) b = notdependalloccursposnegi f M i b" using notdependalloccursposnegi_shiftup by blast
+  ultimately show "notdependalloccursposnegi (Diamond (Star R) f) M i b = (\<not> dependvari (Diamond (Star R) f) M i \<or> notdependalloccursposnegi f M i b)" using notdepends by auto
+qed
 
 lemma andormono : 
   assumes "mono f1 \<and> mono f2"
