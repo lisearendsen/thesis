@@ -567,23 +567,8 @@ next
   thus "\<exists>e S'. \<lbrakk>shiftup f m\<rbrakk> M e \<noteq> \<lbrakk>shiftup f m\<rbrakk> M e(Suc i := S')" by auto
 qed
 
-(*how to apply tactic exactly 5 times*)
 lemma dependvariBoxDiamond : "\<not>dependvari f M i  \<Longrightarrow> \<not>dependvari (Box R f) M i \<and> \<not>dependvari (Diamond R f) M i"
-  apply (induct R arbitrary: f i)
-  apply (simp add: dependvari_def)
-  apply (simp add: dependvari_def)
-  apply (simp add: dependvari_def)
-  apply (simp add: dependvari_def)
-  apply (simp add: dependvari_def)
-  unfolding Box.simps Diamond.simps
-proof-
-  fix R f i
-  assume "\<And>f i. \<not> dependvari f M i \<Longrightarrow> \<not> dependvari (Box R f) M i \<and> \<not> dependvari (Diamond R f) M i"
-  moreover assume "\<not> dependvari f M i"
-  moreover have "\<not> dependvari (var 0) M (Suc i)" using dependvarX by auto
-  ultimately have "\<not> dependvari (Box R (var 0)) M (Suc i) \<and> \<not> dependvari (shiftup f 0) M (Suc i) \<and> \<not> dependvari (Diamond R (var 0)) M (Suc i)" using dependvarishiftup by blast
-  thus "\<not> dependvari (nu (and' (Box R (var 0)) (shiftup f 0))) M i \<and> \<not> dependvari (mu (or (Diamond R (var 0)) (shiftup f 0))) M i" using dependvarinumu dependvariandor by blast
-qed
+  by (induct R arbitrary: f i; simp add: dependvarX dependvariandor dependvarinumu; simp add: dependvari_def)
 
 lemma concsubst : "length e = Suc i \<Longrightarrow> (conc (take i e) (S' ## env)) (i := e!i) = conc e env" 
 proof
