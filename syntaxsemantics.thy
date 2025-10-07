@@ -32,6 +32,18 @@ lemma exists_map_abinconc : "(map f ab \<in> A@@B) = (\<exists>a b. ab = a@b \<a
   apply (metis abinconc map_append)
   done
 
+lemma negcupcap : "- \<Union> {S'. P S'} = \<Inter> {S'. P (-S')}"
+  apply auto
+proof-
+  fix s S'
+  assume assum1: "\<forall>S'. P (- S') \<longrightarrow> s \<in> S'"
+  assume assum2: "s \<in> S'"
+  assume "P S'"
+  hence "P (- (-S'))" by auto
+  hence "s \<in> -S'" using assum1 by blast
+  thus False using assum2 by auto
+qed
+
 text \<open>A mu calculus formula is defined on a type of actions \<open>'a\<close>,
 and de Bruijn indices are used as variables.\<close>
 
@@ -58,12 +70,15 @@ transition :: "('s \<times> 'a \<times> 's) set"
 initial :: "'s set"
 
 datatype example_states = s\<^sub>0 | s\<^sub>1
-datatype example_actions = \<a> | \<b>
+datatype example_actions = \<a> | \<b> | \<c>
 
 text \<open>A record can be instantiated as follows.\<close>
 
 definition example_lts :: "(example_actions, example_states) lts" where
-"example_lts \<equiv> \<lparr>transition = {(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0), (s\<^sub>1, \<a>, s\<^sub>1)}, initial = {s\<^sub>0}\<rparr>"
+"example_lts \<equiv> \<lparr>transition = {(s\<^sub>0, \<c>, s\<^sub>0), (s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0), (s\<^sub>1, \<a>, s\<^sub>1)}, initial = {s\<^sub>0}\<rparr>"
+
+text \<open>An environment is updated by shifting all variable mappings to the right, i.e.
+newenvironment e S' (Suc i) = e i.\<close>
 
 abbreviation newenvironment :: "(nat \<Rightarrow> 's set) \<Rightarrow> 's set \<Rightarrow> (nat \<Rightarrow> 's set) " where
 "newenvironment e S' \<equiv> S' ## e"
@@ -94,6 +109,8 @@ lemma newenvironmentswitchzero [simp] :
   apply (induct_tac x; simp)
   done
 
+text \<open>With the definition of \<open>newenvironment\<close>, we define the semantics of formulas.\<close>
+
 fun formulasemantics :: "'a formula  \<Rightarrow> ('a, 's) lts \<Rightarrow> (nat \<Rightarrow> 's set) \<Rightarrow> 's set" (\<open>\<lbrakk>_\<rbrakk> _ _\<close> [80, 80, 80] 80)
 where 
   "\<lbrakk>tt\<rbrakk> M e = UNIV " |
@@ -107,7 +124,7 @@ where
   "\<lbrakk>nu f\<rbrakk> M e = \<Union> {S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}" |
   "\<lbrakk>mu f\<rbrakk> M e = \<Inter> {S'. S' \<supseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}"
 
-text \<open>Proving semantics of formulas on the example as given before.\<close>
+text \<open>We can prove the evaluation of semantics of formulas on the example as given before.\<close>
 
 lemma "\<lbrakk>box \<a> ff\<rbrakk> example_lts e = {s\<^sub>0}"
   apply (simp add: example_lts_def)
@@ -141,8 +158,8 @@ where
   "(shiftup (neg f) i) = neg (shiftup f i)" |
   "(shiftup (and' f f') i) = and' (shiftup f i) (shiftup f' i) " |
   "(shiftup (or f f') i) = or (shiftup f i) (shiftup f' i)" |
-  "(shiftup (diamond act f) i) = diamond act (shiftup f i)" |
   "(shiftup (box act f) i) = box act (shiftup f i)" |
+  "(shiftup (diamond act f) i) = diamond act (shiftup f i)" | 
   "(shiftup (nu f) i) = nu (shiftup f (Suc i))" |
   "(shiftup (mu f) i) = mu (shiftup f (Suc i))"
 
@@ -265,7 +282,7 @@ lemma Or_eq_exist : "finite A \<Longrightarrow> \<lbrakk>Or A F\<rbrakk> M e = {
   apply (rule someI2_ex; simp add: finite_list)
   done
 
-lemma Or_eq_exist' : "finite A \<Longrightarrow> \<lbrakk>Or A F\<rbrakk> M e = (\<Union>a \<in> A. {s. s \<in> \<lbrakk>F a\<rbrakk> M e})"
+lemma Or_eq_exist' [simp] : "finite A \<Longrightarrow> \<lbrakk>Or A F\<rbrakk> M e = (\<Union>a \<in> A. {s. s \<in> \<lbrakk>F a\<rbrakk> M e})"
   by (subst Or_eq_exist; auto)
 
 fun Diamond :: "'a rexp \<Rightarrow> 'a formula \<Rightarrow> 'a formula " where 
@@ -321,7 +338,8 @@ lemma shiftupBox [simp] : "shiftup (Box R f) i = Box R (shiftup f i)"
 lemma shiftdownBox [simp] : "shiftdown (Box R f) i = Box R (shiftdown f i)"
   by (induct R arbitrary : i f; simp add: shiftupdown)
 
-text \<open>Defining \<open>negvari\<close> to prove duality of mu and nu, and also proving definition on our extensions.\<close>
+text \<open>Defining \<open>negvari\<close> to prove duality of mu and nu, and also proving how the definition can 
+be unfolded on our extensions.\<close>
 
 fun negvari :: "'a formula \<Rightarrow> nat \<Rightarrow> 'a formula "
 where 
@@ -331,8 +349,8 @@ where
   "negvari (neg f) i = neg (negvari f i)" |
   "negvari (and' f f') i = and' (negvari f i) (negvari f' i) " |
   "negvari (or f f') i = or (negvari f i) (negvari f' i)" |
-  "negvari (diamond a f) i = diamond a (negvari f i) " |
   "negvari (box a f) i = box a (negvari f i)" |
+  "negvari (diamond a f) i = diamond a (negvari f i) " |
   "negvari (nu f) i = nu (negvari f (Suc i))" |
   "negvari (mu f) i = mu (negvari f (Suc i))"
 
@@ -344,6 +362,18 @@ lemma negvariDiamond [simp] : "negvari (Diamond R f) i = Diamond R (negvari f i)
 
 lemma negvariBox [simp] : "negvari (Box R f) i = Box R (negvari f i)"
   by (induct R arbitrary : f i; simp add : negvarishiftup)
+
+lemma negvariAndlist [simp] : "negvari (Andlist Alist F) i = Andlist Alist (\<lambda>a. (negvari (F a) i))"
+  by (induct Alist; simp)
+
+lemma negvariAnd [simp] : "finite A \<Longrightarrow> negvari (And A F) i = And A (\<lambda>a. (negvari (F a) i))"
+  by (simp add: And_def)
+
+lemma negvariOrlist [simp] : "negvari (Orlist Alist F) i = Orlist Alist (\<lambda>a. (negvari (F a) i))"
+  by (induct Alist; simp)
+
+lemma negvariOr [simp] : "finite A \<Longrightarrow> negvari (Or A F) i = Or A (\<lambda>a. (negvari (F a) i))"
+  by (simp add: Or_def)
 
 value "negvari (or (var 0) (mu (and' (var 0) (var 1)))) 0 :: nat formula"
 
@@ -361,8 +391,14 @@ lemma negnegf [simp] : "\<lbrakk>neg (neg (f))\<rbrakk> M e = \<lbrakk>f\<rbrakk
 lemma negand' [simp] : "\<lbrakk>neg (and' f f')\<rbrakk> M e = \<lbrakk>or (neg f) (neg f')\<rbrakk> M e"
   by simp
 
+lemma negAnd [simp] : "finite A \<Longrightarrow> \<lbrakk>neg (And A F)\<rbrakk> M e = \<lbrakk>Or A (\<lambda>a. neg (F a))\<rbrakk> M e"
+  by auto
+
 lemma negor [simp] : "\<lbrakk>neg (or f f')\<rbrakk> M e = \<lbrakk>and' (neg f) (neg f')\<rbrakk> M e"
   by simp
+
+lemma negOr [simp] : "finite A \<Longrightarrow> \<lbrakk>neg (Or A F)\<rbrakk> M e = \<lbrakk>And A (\<lambda>a. neg (F a))\<rbrakk> M e"
+  by auto
 
 lemma negbox : "\<lbrakk>neg (box act f)\<rbrakk> M e = \<lbrakk>diamond act (neg f)\<rbrakk> M e"
   by auto
@@ -382,19 +418,11 @@ proof-
   thus " \<lbrakk>f\<rbrakk> M (newenvironment e S') (Suc i := - e i) = \<lbrakk>negvari f (Suc i)\<rbrakk> M (newenvironment e S')" by simp
 qed
 
-lemma pushnegnu : "\<lbrakk>neg (nu f)\<rbrakk> M e = \<Inter> {S. S \<supseteq> \<lbrakk>neg f\<rbrakk> M (newenvironment e (-S))}"
-proof-
-  have "- \<Union> {S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')} = \<Inter> {-S'| S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}" by blast
-  moreover have "... = \<Inter> {S'. -S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e (-S'))}" using double_compl by metis
-  moreover have "... = \<Inter> {S. S \<supseteq> \<lbrakk>neg f\<rbrakk> M (newenvironment e (-S))}" by auto
-  ultimately show ?thesis by simp
-qed
-
 lemma negnu : "\<lbrakk>neg (nu f)\<rbrakk> M e = \<lbrakk>mu (neg (negvari f 0))\<rbrakk> M e"
 proof-
   have "\<And> S'. \<lbrakk>neg f\<rbrakk> M (newenvironment e (-S')) = \<lbrakk>negvari (neg f) 0\<rbrakk> M (newenvironment e S')" using movenegvariin newenvironmentzerocomplement by metis  
   hence "\<Inter> {S'. S' \<supseteq> \<lbrakk>neg f\<rbrakk> M (newenvironment e (-S'))} = \<Inter> {S'. S' \<supseteq> \<lbrakk>neg (negvari f 0)\<rbrakk> M (newenvironment e S')}" by auto
-  moreover have "\<lbrakk>neg (nu f)\<rbrakk> M e = (\<Inter> {S'. S' \<supseteq> \<lbrakk>neg f\<rbrakk> M (newenvironment e (-S'))})" using pushnegnu by metis
+  moreover have "\<lbrakk>neg (nu f)\<rbrakk> M e = (\<Inter> {S'. S' \<supseteq> \<lbrakk>neg f\<rbrakk> M (newenvironment e (-S'))})" by (auto simp: negcupcap)
   ultimately show ?thesis by auto
 qed  
 
@@ -410,6 +438,8 @@ proof-
   hence "\<lbrakk>neg (mu (neg (negvari (neg (negvari f 0)) 0)))\<rbrakk> M e = \<lbrakk>neg (neg (nu (neg (negvari f 0))))\<rbrakk> M e" by auto
   thus ?thesis by simp
 qed
+
+text \<open>Defining the occurrence and dependence of variables.\<close>
 
 fun occursvari :: "'a formula \<Rightarrow> nat \<Rightarrow> bool "
 where 
@@ -428,33 +458,32 @@ lemma shiftdown_shiftdownenv [simp] : "\<not> occursvari f i \<longrightarrow> \
   apply (induct f arbitrary: e i; simp add: shiftdownenv_def; (arith|rule impI); subst switchnewenvironmentshiftdown)
 proof-
   fix f e i
-  assume assum1 : "(\<And>e i. \<not> occursvari f i \<longrightarrow> (formulasemantics (shiftdown f i) M (shiftdownenv e i)) = (formulasemantics f M e))"
+  assume assum1 : "(\<And>e i. \<not> occursvari f i \<longrightarrow> (\<lbrakk>shiftdown f i\<rbrakk> M (shiftdownenv e i)) = (\<lbrakk>f\<rbrakk> M e))"
   assume assum2 : "\<not> occursvari f (Suc i)"
-  hence "\<forall>S'. formulasemantics (shiftdown f (Suc i)) M (shiftdownenv (newenvironment e S') (Suc i)) = formulasemantics f M (newenvironment e S')" using assum1 by blast
+  hence "\<forall>S'. \<lbrakk>shiftdown f (Suc i)\<rbrakk> M (shiftdownenv (newenvironment e S') (Suc i)) = \<lbrakk>f\<rbrakk> M (newenvironment e S')" using assum1 by blast
   thus "\<Inter> {S'. \<lbrakk>shiftdown f (Suc i)\<rbrakk> M (shiftdownenv (newenvironment e S') (Suc i)) \<subseteq> S'} = \<Inter> {S'. \<lbrakk>f\<rbrakk> M (newenvironment e S') \<subseteq> S'}" by auto
 next
   fix f e i
-  assume assum1 : "(\<And>e i. \<not> occursvari f i \<longrightarrow> (formulasemantics (shiftdown f i) M (shiftdownenv e i)) = (formulasemantics f M e))"
+  assume assum1 : "(\<And>e i. \<not> occursvari f i \<longrightarrow> (\<lbrakk>shiftdown f i\<rbrakk> M (shiftdownenv e i)) = (\<lbrakk>f\<rbrakk> M e))"
   assume assum2 : "\<not> occursvari f (Suc i)"
-  hence "\<forall>S'. formulasemantics (shiftdown f (Suc i)) M (shiftdownenv (newenvironment e S') (Suc i)) = formulasemantics f M (newenvironment e S')" using assum1 by blast
+  hence "\<forall>S'. \<lbrakk>shiftdown f (Suc i)\<rbrakk> M (shiftdownenv (newenvironment e S') (Suc i)) = \<lbrakk>f\<rbrakk> M (newenvironment e S')" using assum1 by blast
   thus "\<Union> {S'. S' \<subseteq> \<lbrakk>shiftdown f (Suc i)\<rbrakk> M (shiftdownenv (newenvironment e S') (Suc i))} = \<Union> {S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}" by auto
 qed
 
-lemma closedformula : "((\<forall>i \<ge> j. \<not>occursvari f i) \<and> (\<forall>i < j. e i = e' i)) \<longrightarrow> \<lbrakk>f\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e'"
+lemma closedformula : "((\<forall>i \<ge> j. \<not>occursvari f i) \<and> (\<forall>i < j. e i = e' i)) \<Longrightarrow> \<lbrakk>f\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e'"
   apply (induct f arbitrary: e e' j; simp)
   using linorder_le_less_linear apply blast
   apply blast
   apply blast
-  apply (rule impI; subgoal_tac "\<And>S'. \<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M (newenvironment e' S')")
+  apply (subgoal_tac "\<And>S'. \<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M (newenvironment e' S')")
   apply simp
   prefer 2 
-  apply (rule impI; subgoal_tac "\<And>S'. \<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M (newenvironment e' S')")
+  apply (subgoal_tac "\<And>S'. \<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M (newenvironment e' S')")
   apply simp
 proof-
-  fix f j
+  fix f j S'
   fix e e' :: "nat \<Rightarrow> 'b set"
-  fix S' :: "'b set"
-  assume "(\<And>e e' j. (\<forall>i\<ge>j. \<not> occursvari f i) \<and> (\<forall>i<j. e i = e' i) \<longrightarrow> \<lbrakk>f\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e')"
+  assume "(\<And>e e' j. (\<forall>i\<ge>j. \<not> occursvari f i) \<and> (\<forall>i<j. e i = e' i) \<Longrightarrow> \<lbrakk>f\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e')"
   moreover {
     assume "\<forall>i\<ge>j. \<not> occursvari f (Suc i)"
     hence "\<forall>i \<ge> Suc j. \<not> occursvari f i" using Suc_le_D by auto 
@@ -477,29 +506,75 @@ lemma shiftupnotoccurs [simp] : "\<not>(occursvari (shiftup f i) i)"
 
 lemma shiftuplemma [simp] : "\<lbrakk>shiftup f 0\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M e"
 proof-
-  have "(formulasemantics (shiftdown (shiftup f 0) 0) M (shiftdownenv (newenvironment e S') 0)) = (formulasemantics (shiftup f 0) M (newenvironment e S'))" using shiftupnotoccurs shiftdown_shiftdownenv by metis
-  thus "(formulasemantics (shiftup f 0) M (newenvironment e S')) = (formulasemantics f M e)" using shiftupanddown shiftdownnewenvzero_eq_newenv by metis
+  have "\<lbrakk>shiftdown (shiftup f 0) 0\<rbrakk> M (shiftdownenv (newenvironment e S') 0) = \<lbrakk>shiftup f 0\<rbrakk> M (newenvironment e S')" using shiftupnotoccurs shiftdown_shiftdownenv by metis
+  thus "\<lbrakk>shiftup f 0\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M e" using shiftupanddown shiftdownnewenvzero_eq_newenv by metis
 qed
 
-fun emptyreg :: "'a rexp \<Rightarrow> bool" where
-  "emptyreg Zero = True" | 
-  "emptyreg One = False" | 
-  "emptyreg (Atom a) = False" |
-  "emptyreg (Plus R Q) = (emptyreg R \<and> emptyreg Q)" |
-  "emptyreg (Times R Q) = (emptyreg R \<or> emptyreg Q)" | 
-  "emptyreg (Star R) = False"
+lemma DiamondPlus : 
+  assumes "\<And>f g. \<lbrakk>f\<rbrakk> M e = \<lbrakk>g\<rbrakk> M e \<Longrightarrow> \<lbrakk>Diamond R f\<rbrakk> M e = \<lbrakk>Diamond R g\<rbrakk> M e"
+  and "\<And>f g. \<lbrakk>f\<rbrakk> M e = \<lbrakk>g\<rbrakk> M e \<Longrightarrow> \<lbrakk>Diamond Q f\<rbrakk> M e = \<lbrakk>Diamond Q g\<rbrakk> M e"
+  and "\<lbrakk>f\<rbrakk> M e = \<lbrakk>g\<rbrakk> M e" 
+  shows "\<lbrakk>Diamond (Plus R Q) f\<rbrakk> M e = \<lbrakk>Diamond (Plus R Q) g\<rbrakk> M e"
+proof-
+  have "\<lbrakk>Diamond R f\<rbrakk> M e = \<lbrakk>Diamond R g\<rbrakk> M e \<and> \<lbrakk>Diamond Q f\<rbrakk> M e = \<lbrakk>Diamond Q g\<rbrakk> M e" using assms by blast
+  thus "\<lbrakk>Diamond (Plus R Q) f\<rbrakk> M e = \<lbrakk>Diamond (Plus R Q) g\<rbrakk> M e" by simp
+qed
 
-lemma emptyregdef : "emptyreg R = (lang R = {})"
-  by (induct R; auto)
+lemma DiamondTimes : 
+  assumes "\<And>f g. \<lbrakk>f\<rbrakk> M e = \<lbrakk>g\<rbrakk> M e \<Longrightarrow> \<lbrakk>Diamond R f\<rbrakk> M e = \<lbrakk>Diamond R g\<rbrakk> M e"
+  and "\<And>f g. \<lbrakk>f\<rbrakk> M e = \<lbrakk>g\<rbrakk> M e \<Longrightarrow> \<lbrakk>Diamond Q f\<rbrakk> M e = \<lbrakk>Diamond Q g\<rbrakk> M e"
+  and "\<lbrakk>f\<rbrakk> M e = \<lbrakk>g\<rbrakk> M e" 
+  shows "\<lbrakk>Diamond (Times R Q) f\<rbrakk> M e = \<lbrakk>Diamond (Times R Q) g\<rbrakk> M e"
+proof-
+  have "\<lbrakk>Diamond R (Diamond Q f)\<rbrakk> M e = \<lbrakk>Diamond R (Diamond Q g)\<rbrakk> M e" using assms by blast
+  thus "\<lbrakk>Diamond (Times R Q) f\<rbrakk> M e = \<lbrakk>Diamond (Times R Q) g\<rbrakk> M e" by simp
+qed
+
+lemma Diamond_eq : "\<lbrakk>f\<rbrakk> M e = \<lbrakk>g\<rbrakk> M e \<Longrightarrow> \<lbrakk>Diamond R f\<rbrakk> M e = \<lbrakk>Diamond R g\<rbrakk> M e"
+  by (induct R arbitrary: f g; (((rule DiamondPlus|rule DiamondTimes); blast)|simp))
 
 lemma occursvarishiftup : "m \<le> i \<Longrightarrow> occursvari (shiftup f m) (Suc i) = occursvari f i"
   by (induct f arbitrary : i m; simp)
 
-lemma occursDiamond [simp] : "(occursvari (Diamond R f) i) = (occursvari f i \<and> \<not>emptyreg R)"
+lemma occursDiamond [simp] : "(occursvari (Diamond R f) i) = (occursvari f i \<and> \<not>rexp_empty R)"
   by (induct R arbitrary : f i; simp add : occursvarishiftup; auto)
 
-lemma occursBox [simp] : "(occursvari (Box R f) i) = (occursvari f i \<and> \<not>emptyreg R)"
+lemma occursBox [simp] : "(occursvari (Box R f) i) = (occursvari f i \<and> \<not>rexp_empty R)"
   by (induct R arbitrary : f i; simp add : occursvarishiftup; auto)
+
+lemma negBox : "\<lbrakk>neg (Box R f)\<rbrakk> M e = \<lbrakk>Diamond R (neg f)\<rbrakk> M e"
+  apply (induct R arbitrary: f e; simp)
+  apply blast
+proof-
+  fix R Q f e
+  assume "\<And>f e. -(\<lbrakk>Box Q f\<rbrakk> M e) =  \<lbrakk>Diamond Q (neg f)\<rbrakk> M e"
+  hence "\<lbrakk>neg (Box Q f)\<rbrakk> M e = \<lbrakk>Diamond Q (neg f)\<rbrakk> M e" by simp
+  thus "\<lbrakk>Diamond R (neg (Box Q f))\<rbrakk> M e = \<lbrakk>Diamond R (Diamond Q (neg f))\<rbrakk> M e" using Diamond_eq by blast
+next
+  fix R f e
+  assume "\<And>f e. - (\<lbrakk>Box R f\<rbrakk> M e) = \<lbrakk>Diamond R (neg f)\<rbrakk> M e" 
+  hence "\<And>S'. -(\<lbrakk>Box R (var 0)\<rbrakk> M (newenvironment e (-S'))) = \<lbrakk>Diamond R (neg (var 0))\<rbrakk> M (newenvironment e (-S'))" by blast
+  moreover have "\<And>S'. \<lbrakk>Diamond R (neg (var 0))\<rbrakk> M (newenvironment e (-S')) = \<lbrakk>negvari (Diamond R (neg (var 0))) 0\<rbrakk> M (newenvironment e S')" using movenegvariin newenvironmentzerocomplement by metis
+  ultimately have "\<And>S'. -(\<lbrakk>Box R (var 0)\<rbrakk> M (newenvironment e (-S'))) = \<lbrakk>Diamond R (var 0)\<rbrakk> M (newenvironment e S')" by (simp add: Diamond_eq)
+  moreover have "- \<Union> {S'. S' \<subseteq> \<lbrakk>Box R (var 0)\<rbrakk> M (newenvironment e S') \<and> S' \<subseteq> \<lbrakk>f\<rbrakk> M e} = \<Inter> {S'. -S' \<subseteq> \<lbrakk>Box R (var 0)\<rbrakk> M (newenvironment e (-S')) \<and> -S' \<subseteq> \<lbrakk>f\<rbrakk> M e}" by (rule negcupcap)
+  moreover have "... =  \<Inter> {S'. -(\<lbrakk>Box R (var 0)\<rbrakk> M (newenvironment e (-S'))) \<subseteq> S' \<and> - (\<lbrakk>f\<rbrakk> M e) \<subseteq> S'}" using compl_le_swap2 by meson
+  ultimately show "- \<Union> {S'. S' \<subseteq> \<lbrakk>Box R (var 0)\<rbrakk> M (newenvironment e S') \<and> S' \<subseteq> \<lbrakk>f\<rbrakk> M e} = \<Inter> {S'. \<lbrakk>Diamond R (var 0)\<rbrakk> M (newenvironment e S') \<subseteq> S' \<and> - (\<lbrakk>f\<rbrakk> M e) \<subseteq> S'}" by auto
+qed
+
+lemma negDiamond : "\<lbrakk>neg (Diamond R f)\<rbrakk> M e = \<lbrakk>Box R (neg f)\<rbrakk> M e"
+proof-
+  have "\<lbrakk>Diamond R f\<rbrakk> M e = \<lbrakk>neg (Box R (neg f))\<rbrakk> M e" using Diamond_eq negBox negnegf by metis
+  thus ?thesis by simp
+qed
+
+lemma Box_eq : "\<lbrakk>f\<rbrakk> M e = \<lbrakk>g\<rbrakk> M e \<Longrightarrow> \<lbrakk>Box R f\<rbrakk> M e = \<lbrakk>Box R g\<rbrakk> M e"
+proof-
+  assume "\<lbrakk>f\<rbrakk> M e = \<lbrakk>g\<rbrakk> M e"
+  hence "\<lbrakk>neg f\<rbrakk> M e = \<lbrakk>neg g\<rbrakk> M e" by simp
+  hence "\<lbrakk>Diamond R (neg f)\<rbrakk> M e = \<lbrakk>Diamond R (neg g)\<rbrakk> M e" by (rule Diamond_eq)
+  hence "\<lbrakk>neg (Box R f)\<rbrakk> M e = \<lbrakk>neg (Box R g)\<rbrakk> M e" by (simp only: negBox)
+  thus "\<lbrakk>Box R f\<rbrakk> M e = \<lbrakk>Box R g\<rbrakk> M e" by simp
+qed
 
 definition transformer :: "'a formula \<Rightarrow> ('a, 's) lts \<Rightarrow> (nat \<Rightarrow> 's set) \<Rightarrow> 's set \<Rightarrow> 's set "
   where
@@ -538,7 +613,7 @@ lemma dependvarinumu : "\<not>dependvari f M (Suc i)  \<Longrightarrow> \<not>de
 lemma shiftup_envrepeati [simp] : "\<lbrakk>shiftup f m\<rbrakk> M (envrepeati e m) = \<lbrakk>f\<rbrakk> M e"
   using shiftdownenvrepeat shiftupanddown by metis
 
-lemma notoccursnotdepends : "\<not>occursvari f i \<longrightarrow> \<not>dependvari f M i"
+lemma notoccursnotdepends : "\<not>occursvari f i \<Longrightarrow> \<not>dependvari f M i"
   apply (induct f arbitrary: i; simp add: dependvarineg dependvariandor dependvariboxdiamond dependvarinumu)
   apply (simp_all add: dependvari_def)
   done
@@ -550,7 +625,7 @@ lemma dependvarishiftup [simp] : "m \<le> i \<Longrightarrow> dependvari (shiftu
   apply (simp add: dependvari_def)
 proof
   assume "\<exists>e S'. \<lbrakk>shiftup f m\<rbrakk> M e \<noteq> \<lbrakk>shiftup f m\<rbrakk> M e(Suc i := S')"
-  from this obtain e S' where "\<lbrakk>shiftup f m\<rbrakk> M e \<noteq> \<lbrakk>shiftup f m\<rbrakk> M e(Suc i := S')" by auto
+  then obtain e S' where "\<lbrakk>shiftup f m\<rbrakk> M e \<noteq> \<lbrakk>shiftup f m\<rbrakk> M e(Suc i := S')" by auto
   hence "\<lbrakk>shiftdown (shiftup f m) m\<rbrakk> M (shiftdownenv e m) \<noteq> \<lbrakk>shiftdown (shiftup f m) m\<rbrakk> M (shiftdownenv (e(Suc i := S')) m)" by simp
   moreover assume "m \<le> i"
   moreover have "m \<le> i \<Longrightarrow> (shiftdownenv (e(Suc i := S')) m) = (shiftdownenv e m)(i := S')" by (rule; simp add: shiftdownenv_def)
@@ -558,7 +633,7 @@ proof
   thus "\<exists>e S'. \<lbrakk>f\<rbrakk> M e \<noteq> \<lbrakk>f\<rbrakk> M e(i := S')" by auto
 next
   assume "\<exists>e S'. \<lbrakk>f\<rbrakk> M e \<noteq> \<lbrakk>f\<rbrakk> M e(i := S')"
-  from this obtain e S' where "\<lbrakk>f\<rbrakk> M e \<noteq> \<lbrakk>f\<rbrakk> M e(i := S')" by auto
+  then obtain e S' where "\<lbrakk>f\<rbrakk> M e \<noteq> \<lbrakk>f\<rbrakk> M e(i := S')" by auto
   moreover have "\<not>dependvari (shiftup f m) M m" using shiftupnotoccurs notoccursnotdepends by blast
   ultimately have "\<lbrakk>shiftup f m\<rbrakk> M (envrepeati e m) \<noteq> \<lbrakk>shiftup f m\<rbrakk> M (envrepeati (e(i := S')) m) (m := e m)" by (simp add: dependvari_def)
   moreover assume "m \<le> i"
@@ -570,7 +645,7 @@ qed
 lemma dependvariBoxDiamond : "\<not>dependvari f M i  \<Longrightarrow> \<not>dependvari (Box R f) M i \<and> \<not>dependvari (Diamond R f) M i"
   by (induct R arbitrary: f i; simp add: dependvarX dependvariandor dependvarinumu; simp add: dependvari_def)
 
-lemma concsubst : "length e = Suc i \<Longrightarrow> (conc (take i e) (S' ## env)) (i := e!i) = conc e env" 
+lemma concsubst : "length e = Suc i \<Longrightarrow> (conc (take i e) (S' ## env)) (i := e!i) = conc e env"
 proof
   fix j
   assume assum1: "length e = Suc i"
@@ -629,7 +704,7 @@ proof-
 next
   fix f :: "'a formula"
   assume "\<exists>j. \<forall>i\<ge>j. \<not> occursvari f i"
-  from this obtain j where "\<forall>i\<ge>j. \<not> occursvari f i" by auto
+  then obtain j where "\<forall>i\<ge>j. \<not> occursvari f i" by auto
   hence "\<forall>i\<ge>Suc j. \<not> occursvari f (Suc i)" by simp
   thus "\<exists>j. \<forall>i\<ge>j. \<not> occursvari f (Suc i)" by blast
   thus "\<exists>j. \<forall>i\<ge>j. \<not> occursvari f (Suc i)" by simp
@@ -655,6 +730,9 @@ proof-
   thus "\<Union> {S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment (conc elist e) S')} = \<Union> {S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment (conc elist e') S')}" by auto
   thus "\<Inter> {S'. \<lbrakk>f\<rbrakk> M (newenvironment (conc elist e) S') \<subseteq> S'} = \<Inter> {S'. \<lbrakk>f\<rbrakk> M (newenvironment (conc elist e') S') \<subseteq> S'}" using conclusion by auto
 qed
+
+text \<open>If a formula does not depend on any variable, we can change its environment without changing
+its semantics.\<close>
 
 lemma notdependchangeenv : "(\<And>i. \<not>dependvari f M i) \<Longrightarrow> \<lbrakk>f\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e'"
 proof-
@@ -693,10 +771,10 @@ lemma notdependsmono : "\<not>dependvari f M i \<Longrightarrow>
   by (induct f arbitrary: i; simp add: dependvari_def monotone_def)
 
 lemma notdependscoro : "(\<not>dependvari f M 0 \<longrightarrow> mono (transformer f M e))"
-  apply (simp add: transformerdef)
 proof-
   have "\<forall>S''. \<not>dependvari f M 0 \<longrightarrow> mono (\<lambda>S'.(\<lbrakk>f\<rbrakk> M ((newenvironment e S'')(0 := S'))))" using notdependsmono by metis
-  thus "\<not>dependvari f M 0 \<longrightarrow> mono (\<lambda>S'.(\<lbrakk>f\<rbrakk> M (newenvironment e S')))" by auto
+  hence "\<not>dependvari f M 0 \<longrightarrow> mono (\<lambda>S'.(\<lbrakk>f\<rbrakk> M (newenvironment e S')))" by auto
+  thus ?thesis by (simp add: transformerdef)
 qed
 
 lemma andsubset : 
@@ -720,8 +798,8 @@ where
   "(notdependalloccursposnegi (neg f) M i b) = (\<not>dependvari f M i \<or> notdependalloccursposnegi f M i (\<not>b))" |
   "(notdependalloccursposnegi (and' f f') M i b) = (\<not>dependvari (and' f f') M i \<or> (notdependalloccursposnegi f M i b \<and> notdependalloccursposnegi f' M i b))" |
   "(notdependalloccursposnegi (or f f') M i b) = (\<not>dependvari (or f f') M i \<or> (notdependalloccursposnegi f M i b \<and> notdependalloccursposnegi f' M i b))" |
-  "(notdependalloccursposnegi (diamond act f) M i b) = (\<not>dependvari (diamond act f) M i \<or> notdependalloccursposnegi f M i b) " |
   "(notdependalloccursposnegi (box act f) M i b) = (\<not>dependvari (box act f) M i \<or> notdependalloccursposnegi f M i b)" |
+  "(notdependalloccursposnegi (diamond act f) M i b) = (\<not>dependvari (diamond act f) M i \<or> notdependalloccursposnegi f M i b) " |  
   "(notdependalloccursposnegi (nu f) M i b) = (\<not>dependvari (nu f) M i \<or> notdependalloccursposnegi f M (Suc i) b)" |
   "(notdependalloccursposnegi (mu f) M i b) = (\<not>dependvari (mu f) M i \<or> notdependalloccursposnegi f M (Suc i) b)"
 
@@ -731,18 +809,16 @@ lemma notdepends : "\<not>dependvari f M i \<Longrightarrow> notdependalloccursp
   apply auto
   done
 
-(*opschonen*)
 lemma notdependalloccursposnegi_shiftup : "m \<le> i \<Longrightarrow> notdependalloccursposnegi (shiftup f m) M (Suc i) b = notdependalloccursposnegi f M i b"
   apply (induct f arbitrary: b m i; simp)
   apply (metis dependvarishiftup shiftup.simps(5))
   apply (metis dependvarishiftup shiftup.simps(6))
-  apply (metis dependvarishiftup shiftup.simps(8))
   apply (metis dependvarishiftup shiftup.simps(7))
+  apply (metis dependvarishiftup shiftup.simps(8))
   apply (metis dependvarishiftup shiftup.simps(9))
   apply (metis dependvarishiftup shiftup.simps(10))
   done
 
-(*opschonen*)
 lemma notdependalloccursposnegi_Diamond [simp] : "notdependalloccursposnegi (Diamond R f) M i b = (\<not>dependvari (Diamond R f) M i \<or> notdependalloccursposnegi f M i b)"
   apply (induct R arbitrary: f i b)
   apply (simp add: dependvari_def)
@@ -756,43 +832,41 @@ proof-
   assume IH : "\<And>f i b. notdependalloccursposnegi (Diamond R f) M i b = (\<not> dependvari (Diamond R f) M i \<or> notdependalloccursposnegi f M i b)"
   have "notdependalloccursposnegi (Diamond (Star R) f) M i b = (\<not> dependvari (Diamond (Star R) f) M i \<or> \<not> dependvari (or (Diamond R (var 0)) (shiftup f 0)) M (Suc i) \<or> (notdependalloccursposnegi (Diamond R (var 0)) M (Suc i) b \<and> notdependalloccursposnegi (shiftup f 0) M (Suc i) b))" by simp
   hence "notdependalloccursposnegi (Diamond (Star R) f) M i b = (\<not> dependvari (Diamond (Star R) f) M i \<or> \<not> dependvari (shiftup f 0) M (Suc i) \<or> notdependalloccursposnegi (shiftup f 0) M (Suc i) b)"
-    by (metis Diamond.simps(6) IH dependvarX dependvarinumu nat.distinct(1) notdepends)
+    using  Diamond.simps(6) IH dependvarX dependvarinumu nat.distinct(1) notdepends by metis
   moreover have "notdependalloccursposnegi (shiftup f 0) M (Suc i) b = notdependalloccursposnegi f M i b" using notdependalloccursposnegi_shiftup by blast
   ultimately show "notdependalloccursposnegi (Diamond (Star R) f) M i b = (\<not> dependvari (Diamond (Star R) f) M i \<or> notdependalloccursposnegi f M i b)" using notdepends by auto
 qed
 
-lemma andormono : 
-  assumes "mono f1 \<and> mono f2"
-  shows "mono (\<lambda>S'. f1 S' \<inter> f2 S')"
-  and "mono (\<lambda>S'. f1 S' \<union> f2 S')"
-  apply (simp_all add: monotone_def)
-  apply (metis assms andsubset monotone_def)
-  apply (metis assms orsubset monotone_def)
+lemma notdependalloccursposnegi_Box [simp] : "notdependalloccursposnegi (Box R f) M i b = (\<not>dependvari (Box R f) M i \<or> notdependalloccursposnegi f M i b)"
+  apply (induct R arbitrary: f i b)
+  apply (simp add: dependvari_def)
+  using notdepends apply auto[1]
+  apply (simp add: dependvari_def)
+  using dependvariandor apply fastforce
+  apply simp
+  using dependvariBoxDiamond apply fastforce
+proof-
+  fix R f i b
+  assume IH : "\<And>f i b. notdependalloccursposnegi (Box R f) M i b = (\<not> dependvari (Box R f) M i \<or> notdependalloccursposnegi f M i b)"
+  have "notdependalloccursposnegi (Box (Star R) f) M i b = (\<not> dependvari (Box (Star R) f) M i \<or> \<not> dependvari (and' (Box R (var 0)) (shiftup f 0)) M (Suc i) \<or> (notdependalloccursposnegi (Box R (var 0)) M (Suc i) b \<and> notdependalloccursposnegi (shiftup f 0) M (Suc i) b))" by simp
+  hence "notdependalloccursposnegi (Box (Star R) f) M i b = (\<not> dependvari (Box (Star R) f) M i \<or> \<not> dependvari (shiftup f 0) M (Suc i) \<or> notdependalloccursposnegi (shiftup f 0) M (Suc i) b)"
+    using Box.simps(6) IH dependvarX dependvarinumu nat.distinct(1) notdepends by metis
+  moreover have "notdependalloccursposnegi (shiftup f 0) M (Suc i) b = notdependalloccursposnegi f M i b" using notdependalloccursposnegi_shiftup by blast
+  ultimately show "notdependalloccursposnegi (Box (Star R) f) M i b = (\<not> dependvari (Box (Star R) f) M i \<or> notdependalloccursposnegi f M i b)" using notdepends by auto
+qed
+
+lemma andormonoantimono : 
+  shows "mono f1 \<and> mono f2 \<Longrightarrow> mono (\<lambda>S'. f1 S' \<inter> f2 S') \<and>  mono (\<lambda>S'. f1 S' \<union> f2 S')"
+  and "antimono f1 \<and> antimono f2 \<Longrightarrow> antimono (\<lambda>S'. f1 S' \<inter> f2 S') \<and> antimono (\<lambda>S'. f1 S' \<union> f2 S')"
+  apply (simp_all add: monotone_def andsubset orsubset)
+  apply blast+
   done
 
-lemma andorantimono : 
-  assumes "antimono f1 \<and> antimono f2"
-  shows "antimono (\<lambda>S'. f1 S' \<inter> f2 S')"
-  and "antimono (\<lambda>S'. f1 S' \<union> f2 S')"
+lemma boxdiamondmonoantimono : 
+  shows "mono f \<Longrightarrow> mono (\<lambda>S'. {s. \<forall> s'. (s, a, s') \<in> (transition M) \<longrightarrow>  s' \<in> f S'}) \<and> mono (\<lambda>S'. {s. \<exists> s'. (s, a, s') \<in> (transition M) \<and>  s' \<in> f S'})"
+  and "antimono f \<Longrightarrow> antimono (\<lambda>S'. {s. \<forall> s'. (s, a, s') \<in> (transition M) \<longrightarrow>  s' \<in> f S'}) \<and> antimono (\<lambda>S'. {s. \<exists> s'. (s, a, s') \<in> (transition M) \<and>  s' \<in> f S'})"
   apply (simp_all add: monotone_def)
-  apply (metis assms andsubset monotone_def)
-  apply (metis assms orsubset monotone_def)
-  done
-
-lemma boxdiamondmono : 
-  assumes "mono f"
-  shows "mono (\<lambda>S'. {s. \<forall> s'. (s, a, s') \<in> (transition M) \<longrightarrow>  s' \<in> f S'})"
-  and "mono (\<lambda>S'. {s. \<exists> s'. (s, a, s') \<in> (transition M) \<and>  s' \<in> f S'})"
-  apply (simp_all add: monotone_def)
-  using assms monoD apply blast+
-  done
-
-lemma boxdiamondantimono : 
-  assumes "antimono f"
-  shows "antimono (\<lambda>S'. {s. \<forall> s'. (s, a, s') \<in> (transition M) \<longrightarrow>  s' \<in> f S'})"
-  and "antimono (\<lambda>S'. {s. \<exists> s'. (s, a, s') \<in> (transition M) \<and>  s' \<in> f S'})"
-  apply (simp_all add: monotone_def)
-  using assms antimonoD apply blast+
+  using monoD apply blast+
   done
 
 lemma numumono : 
@@ -800,15 +874,13 @@ lemma numumono :
   shows "mono (\<lambda>S'. (\<Union> {S''. S'' \<subseteq> f S'' S'}))"
   and "mono (\<lambda>S'. (\<Inter> {S''. S'' \<supseteq> f S'' S'}))"
   apply (simp_all add: monotone_def)
-  apply (rule allI)+
-  apply (rule impI)
+  apply (rule allI impI)+
   apply (subgoal_tac "\<forall>S''. S'' \<subseteq> f S'' x \<longrightarrow> S'' \<subseteq> f S'' y")
-  apply blast
+  apply (simp add: Collect_mono_iff Sup_subset_mono)
   using assms monotoneD apply fastforce
-  apply (rule allI)+
-  apply (rule impI)
+  apply (rule allI impI)+
   apply (subgoal_tac "\<forall>S''. f S'' y \<subseteq> S'' \<longrightarrow> f S'' x \<subseteq> S''")
-  apply blast
+  apply (simp add: Collect_mono_iff Inf_superset_mono)
   using assms monotoneD apply fastforce
   done
 
@@ -817,15 +889,13 @@ lemma numuantimono :
   shows "antimono (\<lambda>S'. (\<Union> {S''. S'' \<subseteq> f S'' S'}))"
   and "antimono (\<lambda>S'. (\<Inter> {S''. S'' \<supseteq> f S'' S'}))"
   apply (simp_all add: monotone_def)
-  apply (rule allI)+
-  apply (rule impI)
+  apply (rule allI impI)+
   apply (subgoal_tac "\<forall>S''. S'' \<subseteq> f S'' y \<longrightarrow> S'' \<subseteq> f S'' x")
-  apply blast
+  apply (simp add: Collect_mono_iff Sup_subset_mono)
   using assms monotoneD apply fastforce
-  apply (rule allI)+
-  apply (rule impI)
+  apply (rule allI impI)+
   apply (subgoal_tac "\<forall>S''. f S'' x \<subseteq> S'' \<longrightarrow> f S'' y \<subseteq> S''")
-  apply blast
+  apply (simp add: Collect_mono_iff Inf_superset_mono)
   using assms monotoneD apply fastforce
   done
 
@@ -840,23 +910,23 @@ proof-
   assume assum1: "(\<And>i e. (notdependalloccursposnegi f1 M i True \<longrightarrow> mono (\<lambda>S'. \<lbrakk>f1\<rbrakk> M e(i := S'))) \<and> (notdependalloccursposnegi f1 M i False \<longrightarrow> antimono (\<lambda>S'. \<lbrakk>f1\<rbrakk> M e(i := S'))))"
   assume assum2: "(\<And>i e. (notdependalloccursposnegi f2 M i True \<longrightarrow> mono (\<lambda>S'. \<lbrakk>f2\<rbrakk> M e(i := S'))) \<and> (notdependalloccursposnegi f2 M i False \<longrightarrow> antimono (\<lambda>S'. \<lbrakk>f2\<rbrakk> M e(i := S'))))"
   have "\<not> dependvari (and' f1 f2) M i \<longrightarrow> (mono (\<lambda>S'. \<lbrakk>and' f1 f2\<rbrakk> M e(i := S')) \<and> antimono (\<lambda>S'. \<lbrakk>and' f1 f2\<rbrakk> M e(i := S')))" using notdependsmono by metis
-  moreover have "notdependalloccursposnegi f1 M i True \<and> notdependalloccursposnegi f2 M i True \<Longrightarrow> mono (\<lambda>S'. \<lbrakk>and' f1 f2\<rbrakk> M e(i := S'))" by (auto simp: assum1 assum2 andormono)
-  moreover have "notdependalloccursposnegi f1 M i False \<and> notdependalloccursposnegi f2 M i False \<Longrightarrow> antimono (\<lambda>S'. \<lbrakk>and' f1 f2\<rbrakk> M e(i := S'))" by (auto simp: assum1 assum2 andorantimono)
+  moreover have "notdependalloccursposnegi f1 M i True \<and> notdependalloccursposnegi f2 M i True \<Longrightarrow> mono (\<lambda>S'. \<lbrakk>and' f1 f2\<rbrakk> M e(i := S'))" by (auto simp: assum1 assum2 andormonoantimono)
+  moreover have "notdependalloccursposnegi f1 M i False \<and> notdependalloccursposnegi f2 M i False \<Longrightarrow> antimono (\<lambda>S'. \<lbrakk>and' f1 f2\<rbrakk> M e(i := S'))" by (auto simp: assum1 assum2 andormonoantimono)
   ultimately show "(\<not> dependvari (and' f1 f2) M i \<or> notdependalloccursposnegi f1 M i True \<and> notdependalloccursposnegi f2 M i True \<longrightarrow> mono (\<lambda>S'. \<lbrakk>and' f1 f2\<rbrakk> M e(i := S'))) \<and> (\<not> dependvari (and' f1 f2) M i \<or> notdependalloccursposnegi f1 M i False \<and> notdependalloccursposnegi f2 M i False \<longrightarrow> antimono (\<lambda>S'. \<lbrakk>and' f1 f2\<rbrakk> M e(i := S')))" by auto
   have "\<not> dependvari (or f1 f2) M i \<longrightarrow> (mono (\<lambda>S'. \<lbrakk>or f1 f2\<rbrakk> M e(i := S')) \<and> antimono (\<lambda>S'. \<lbrakk>or f1 f2\<rbrakk> M e(i := S')))" using notdependsmono by metis
-  moreover have "notdependalloccursposnegi f1 M i True \<and> notdependalloccursposnegi f2 M i True \<Longrightarrow> mono (\<lambda>S'. \<lbrakk>or f1 f2\<rbrakk> M e(i := S'))" by (auto simp: assum1 assum2 andormono)
-  moreover have "notdependalloccursposnegi f1 M i False \<and> notdependalloccursposnegi f2 M i False \<Longrightarrow> antimono (\<lambda>S'. \<lbrakk>or f1 f2\<rbrakk> M e(i := S'))" by (auto simp: assum1 assum2 andorantimono)
+  moreover have "notdependalloccursposnegi f1 M i True \<and> notdependalloccursposnegi f2 M i True \<Longrightarrow> mono (\<lambda>S'. \<lbrakk>or f1 f2\<rbrakk> M e(i := S'))" by (auto simp: assum1 assum2 andormonoantimono)
+  moreover have "notdependalloccursposnegi f1 M i False \<and> notdependalloccursposnegi f2 M i False \<Longrightarrow> antimono (\<lambda>S'. \<lbrakk>or f1 f2\<rbrakk> M e(i := S'))" by (auto simp: assum1 assum2 andormonoantimono)
   ultimately show "(\<not> dependvari (or f1 f2) M i \<or> notdependalloccursposnegi f1 M i True \<and> notdependalloccursposnegi f2 M i True \<longrightarrow> mono (\<lambda>S'. \<lbrakk>or f1 f2\<rbrakk> M e(i := S'))) \<and> (\<not> dependvari (or f1 f2) M i \<or> notdependalloccursposnegi f1 M i False \<and> notdependalloccursposnegi f2 M i False \<longrightarrow> antimono (\<lambda>S'. \<lbrakk>or f1 f2\<rbrakk> M e(i := S')))" by auto
 next
   fix a f i e
   assume assum1: "(\<And>i e. (notdependalloccursposnegi f M i True \<longrightarrow> mono (\<lambda>S'. \<lbrakk>f\<rbrakk> M e(i := S'))) \<and> (notdependalloccursposnegi f M i False \<longrightarrow> antimono (\<lambda>S'. \<lbrakk>f\<rbrakk> M e(i := S'))))"
   have "\<not> dependvari (box a f) M i \<longrightarrow> (mono (\<lambda>S'. \<lbrakk>box a f\<rbrakk> M e(i := S')) \<and> antimono (\<lambda>S'. \<lbrakk>box a f\<rbrakk> M e(i := S')))" using notdependsmono by metis
-  moreover have "notdependalloccursposnegi f M i True \<Longrightarrow> mono (\<lambda>S'. \<lbrakk>box a f\<rbrakk> M e(i := S'))" by (auto simp: assum1 boxdiamondmono)
-  moreover have "notdependalloccursposnegi f M i False \<Longrightarrow> antimono (\<lambda>S'. \<lbrakk>box a f\<rbrakk> M e(i := S'))" by (auto simp: assum1 boxdiamondantimono)
+  moreover have "notdependalloccursposnegi f M i True \<Longrightarrow> mono (\<lambda>S'. \<lbrakk>box a f\<rbrakk> M e(i := S'))" by (auto simp: assum1 boxdiamondmonoantimono)
+  moreover have "notdependalloccursposnegi f M i False \<Longrightarrow> antimono (\<lambda>S'. \<lbrakk>box a f\<rbrakk> M e(i := S'))" by (auto simp: assum1 boxdiamondmonoantimono)
   ultimately show "(\<not> dependvari (box a f) M i \<or> notdependalloccursposnegi f M i True \<longrightarrow> mono (\<lambda>S'. \<lbrakk>box a f\<rbrakk> M e(i := S'))) \<and> (\<not> dependvari (box a f) M i \<or> notdependalloccursposnegi f M i False \<longrightarrow> antimono (\<lambda>S'. \<lbrakk>box a f\<rbrakk> M e(i := S')))" by auto
   have "\<not> dependvari (diamond a f) M i \<longrightarrow> (mono (\<lambda>S'. \<lbrakk>diamond a f\<rbrakk> M e(i := S')) \<and> antimono (\<lambda>S'. \<lbrakk>diamond a f\<rbrakk> M e(i := S')))" using notdependsmono by metis
-  moreover have "notdependalloccursposnegi f M i True \<Longrightarrow> mono (\<lambda>S'. \<lbrakk>diamond a f\<rbrakk> M e(i := S'))" by (auto simp: assum1 boxdiamondmono)
-  moreover have "notdependalloccursposnegi f M i False \<Longrightarrow> antimono (\<lambda>S'. \<lbrakk>diamond a f\<rbrakk> M e(i := S'))" by (auto simp: assum1 boxdiamondantimono)
+  moreover have "notdependalloccursposnegi f M i True \<Longrightarrow> mono (\<lambda>S'. \<lbrakk>diamond a f\<rbrakk> M e(i := S'))" by (auto simp: assum1 boxdiamondmonoantimono)
+  moreover have "notdependalloccursposnegi f M i False \<Longrightarrow> antimono (\<lambda>S'. \<lbrakk>diamond a f\<rbrakk> M e(i := S'))" by (auto simp: assum1 boxdiamondmonoantimono)
   ultimately show "(\<not> dependvari (diamond a f) M i \<or> notdependalloccursposnegi f M i True \<longrightarrow> mono (\<lambda>S'. \<lbrakk>diamond a f\<rbrakk> M e(i := S'))) \<and> (\<not> dependvari (diamond a f) M i \<or> notdependalloccursposnegi f M i False \<longrightarrow> antimono (\<lambda>S'. \<lbrakk>diamond a f\<rbrakk> M e(i := S')))" by auto
 next
   fix f i e
@@ -870,6 +940,9 @@ next
   moreover have "notdependalloccursposnegi f M (Suc i) False \<Longrightarrow> antimono (\<lambda>S'. \<lbrakk>mu f\<rbrakk> M e(i := S'))" by (auto simp: assum1 numuantimono)
   ultimately show "(\<not> dependvari (mu f) M i \<or> notdependalloccursposnegi f M (Suc i) True \<longrightarrow> mono (\<lambda>S'. \<lbrakk>mu f\<rbrakk> M e(i := S'))) \<and> (\<not> dependvari (mu f) M i \<or> notdependalloccursposnegi f M (Suc i) False \<longrightarrow> antimono (\<lambda>S'. \<lbrakk>mu f\<rbrakk> M e(i := S')))" by auto
 qed
+
+text \<open>\<open>notdependalloccursposnegi\<close> can be evaluated on formulas so that the following lemma can be used
+to prove that its transformer is monotone.\<close>
 
 lemma monotonicitynotdependcoro : 
   shows "notdependalloccursposnegi f M 0 True \<Longrightarrow> mono (transformer f M e)"
@@ -933,10 +1006,9 @@ proof (rule ccontr)
         fix n
         assume assum3: "n \<le> Suc (card (UNIV :: 's set)) \<longrightarrow> n \<le> card ((f ^^ n) S')"
         assume assum4 : "Suc n \<le> Suc (card (UNIV :: 's set))"
-        hence "n \<le> (card (UNIV :: 's set))" by simp
         hence "(f ^^ n) S' \<noteq> (f ^^ (Suc n)) S'" using assum1 by simp
         moreover have "(f ^^ n) S' \<subseteq> (f ^^ (Suc n)) S'" using assms(1) assum2 monosubset by blast 
-        ultimately have "(f ^^ n) S' \<subset> (f ^^ (Suc n)) S'" using psubset_eq by simp
+        ultimately have "(f ^^ n) S' \<subset> (f ^^ (Suc n)) S'" by simp
         moreover have "finite ((f ^^ Suc n) S')" using assms(2) rev_finite_subset by auto
         ultimately have "card ((f ^^ n) S') < card ((f ^^ Suc n) S')" using psubset_card_mono by metis
         thus "Suc n \<le> card ((f ^^ Suc n) S')" using assum3 assum4 by simp
@@ -958,7 +1030,6 @@ proof (rule ccontr)
         fix n
         assume assum3: "n \<le> Suc (card (UNIV :: 's set)) \<longrightarrow> card ((f ^^ n) S') < Suc(card (UNIV :: 's set)) - n"
         assume assum4 : "Suc n \<le> Suc (card (UNIV :: 's set))"
-        hence "n \<le> (card (UNIV :: 's set))" by simp
         hence "(f ^^ n) S' \<noteq> (f ^^ (Suc n)) S'" using assum1 by simp
         moreover have "(f ^^ (Suc n)) S' \<subseteq> (f ^^ n) S'" using assms(1) assum2 monosubset by blast 
         ultimately have "(f ^^ (Suc n)) S' \<subset> (f ^^  n) S'" using psubset_eq by simp
@@ -979,7 +1050,7 @@ lemma gfp_monofin [simp] :
   shows "(f^^(card (UNIV :: 's set))) UNIV = gfp f"
 proof-
   have "\<exists>n \<le> card(UNIV :: 's set). (f^^n) (UNIV) = (f^^(Suc n)) (UNIV)" using assms fixpointmono by blast
-  from this obtain n where assum2: "n \<le> card (UNIV :: 's set) \<and>  (f^^n) (UNIV) = (f^^(Suc n)) (UNIV)" by auto
+  then obtain n where assum2: "n \<le> card (UNIV :: 's set) \<and>  (f^^n) (UNIV) = (f^^(Suc n)) (UNIV)" by auto
   hence "(f ^^ (n + (card (UNIV :: 's set) - n))) (UNIV) = (f ^^ (Suc n +  (card (UNIV :: 's set) - n))) (UNIV)" using fpoweriplusn by metis
   hence "(f^^(card (UNIV :: 's set)))(UNIV) = (f^^Suc(card (UNIV :: 's set)))(UNIV)" using assum2 by auto
   thus ?thesis using gfp_Kleene_iter assms(2) by blast
@@ -991,21 +1062,23 @@ lemma lfp_monofin [simp] :
   shows "(f^^(card (UNIV :: 's set))) {} = lfp f"
 proof-
   have "\<exists>n \<le> card(UNIV :: 's set). (f^^n) {} = (f^^(Suc n)) {}" using assms fixpointmono by blast
-  from this obtain n where assum2: "n \<le> card (UNIV :: 's set) \<and>  (f^^n) {} = (f^^(Suc n)) {}" by auto
+  then obtain n where assum2: "n \<le> card (UNIV :: 's set) \<and>  (f^^n) {} = (f^^(Suc n)) {}" by auto
   hence "(f ^^ (n + (card (UNIV :: 's set) - n))) {} = (f ^^ (Suc n +  (card (UNIV :: 's set) - n))) {}" using fpoweriplusn by metis
   hence "(f^^(card (UNIV :: 's set))){} = (f^^Suc(card (UNIV :: 's set))){}" using assum2 by auto
   thus ?thesis using lfp_Kleene_iter assms(2) by blast
 qed
 
 lemma transformer_eq_nu :
+  fixes M :: "('a, 's) lts"
   assumes "finite (UNIV :: 's set)"
-  and "mono (transformer f (M :: ('a, 's) lts) e)"
+  and "mono (transformer f M e)"
   shows "\<lbrakk>nu f\<rbrakk> M e = ((transformer f M e)^^(card (UNIV :: 's set)))(UNIV)"
   using assms by auto 
 
 lemma transformer_eq_mu :
+  fixes M :: "('a, 's) lts"
   assumes "finite (UNIV :: 's set)"
-  and "mono (transformer f (M :: ('a, 's) lts) e)"
+  and "mono (transformer f M e)"
   shows "\<lbrakk>mu f\<rbrakk> M e = ((transformer f M e)^^(card (UNIV :: 's set))){}"
   using assms by auto
 
