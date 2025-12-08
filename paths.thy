@@ -1,6 +1,21 @@
+(*
+    Author: Lise Arendsen, TU/e
+*)
+
+section \<open>Defining paths, some functions and results\<close>
+
 theory paths
 imports syntaxsemantics
 begin
+
+lemma inductfiniteset : 
+  assumes "finite A"
+  and "P {}"
+  and "\<And>a A'. (a \<in> A-A' \<and> P A') \<Longrightarrow> P (insert a A')" 
+  shows "P A"
+  apply (rule finite_induct_select; simp add: assms)
+  using psubset_imp_ex_mem apply blast
+  done
 
 text \<open>We define finite paths as lists of transitions
 and infinite paths as mappings from natural numbers to transitions.\<close>
@@ -33,7 +48,7 @@ state and last state, while an infinite path is valid only with respect to its f
 
 fun validfinpath :: "('a, 's) lts \<Rightarrow> 's \<Rightarrow> ('a, 's) finpath \<Rightarrow> 's \<Rightarrow> bool" where
 "validfinpath M s [] s' = (s = s')" |
-"validfinpath M s (t#ts) s' = (s = source t  \<and> t \<in> transition M \<and> validfinpath M (target t) ts s')"
+"validfinpath M s (t#ts) s' = (s = source t \<and> t \<in> transition M \<and> validfinpath M (target t) ts s')"
 
 definition validinfpath :: "('a, 's) lts \<Rightarrow> 's \<Rightarrow> ('a, 's) infpath \<Rightarrow> bool" where
 "validinfpath M s p = (s = source (p 0) \<and> (\<forall>n. p n \<in> transition M \<and> (target (p n) = source (p (Suc n)))))"
@@ -46,7 +61,7 @@ fun validpath :: "('a, 's) lts \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Ri
 "validpath M s (fin p) = (\<exists>s'. validfinpath M s p s')" |
 "validpath M s (inf p) = validinfpath M s p"
 
-text \<open>Define predicate of progressing paths.\<close>
+text \<open>Define \<open>enabled\<close> and \<open>locked\<close>.\<close>
 
 definition enabledactionsset :: "('a, 's) lts \<Rightarrow> 's set \<Rightarrow> 'a set" where
 "enabledactionsset M S' = {a . (\<forall>s \<in> S'. \<exists>s'. (s, a, s') \<in> transition M)}"
@@ -60,10 +75,6 @@ lemma enabledactions_def [simp] : "enabledactions M s = {a . (\<exists>s'. (s, a
 definition enabled :: "('a, 's) lts \<Rightarrow> 's \<Rightarrow> 'a set \<Rightarrow> bool" where
 "enabled M s \<alpha> \<equiv> (\<exists> a \<in> \<alpha>. a \<in> enabledactions M s)"
 
-(*
-definition enabledall :: "('a, 's) lts \<Rightarrow> 's \<Rightarrow> 'a set \<Rightarrow> bool" where
-"enabledall M s \<alpha> \<equiv> (\<forall> a \<in> \<alpha>. a \<in> enabledactions M s)"*)
-
 lemma actionenabled : "enabledactions M s \<noteq> {} = (\<exists>a s'. (s, a, s') \<in> transition M)"
   by simp
 
@@ -72,10 +83,6 @@ definition locked :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 's \<Right
 
 lemma lockednegenabled : "locked M B s = (\<not> enabled M s (-B))" 
   by (auto simp: locked_def enabled_def)
-
-fun progressing :: "('a, 's) lts \<Rightarrow> 's \<Rightarrow> 'a set \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
-"progressing M s B (fin p) = (\<exists>s'. validfinpath M s p s' \<and> locked M B s')" |
-"progressing M s B (inf p) = validinfpath M s p"
 
 text \<open>A finite path matches a regular formula if and only if its sequence of actions is in the language 
 of the regular formula.\<close>
@@ -90,13 +97,10 @@ fun matchntimes :: "nat \<Rightarrow> 'a rexp \<Rightarrow> ('a, 's) finpath \<R
 "matchntimes 0 R p = (p = [])" |
 "matchntimes (Suc n) R p = (\<exists>p' p''. p = p' @ p'' \<and> match R p' \<and> matchntimes n R p'')"
 
-lemma existsninduct [simp] : "((\<exists>n. P (Suc n)) \<or> P 0) = (\<exists>n. P n)"
-  using zero_induct by auto
-
 text \<open>A finite path \<open>p\<close> matches \<open>Star R\<close> (Kleene star) if and only if there exists \<open>n\<close> such that 
-\<open>p\<close> matches \<open>R\<close> \<open>n\<close> times.\<close>
+\<open>p\<close> matches \<open>R\<close> \<open>n\<close> times. Makes reasoning about matching \<open>Star R\<close> easier\<close>
 
-lemma matchstar_eq_matchntimes : "match (Star R) p = (\<exists>n. matchntimes n R p)"
+lemma matchstar_eq_matchntimes : "match (R\<^sup>\<star>) p = (\<exists>n. matchntimes n R p)"
 proof-
   have "match (Star R) p = (map action p \<in> (\<Union>n. (lang R) ^^ n))" by (simp add: match_def star_def)
   moreover have "... = (\<exists>n. map action p \<in> (lang R) ^^ n)" by auto
@@ -106,13 +110,13 @@ proof-
     show "(map action p \<in> (lang R) ^^ n) = (matchntimes n R p)"
     apply (induct n arbitrary : p; simp)
     proof-
-    fix n
-    fix p :: "('a, 's) finpath"
-    assume assum1 : "(\<And>(p :: ('a, 's) finpath). (map action p \<in> lang R ^^ n) = matchntimes n R p)"
-    have "(map action p \<in> lang R @@ lang R ^^ n) = (\<exists>p' p''. p = p' @ p'' \<and>  ((map action p') \<in> lang R) \<and> ((map action p'') \<in> lang R ^^ n))" by (rule exists_map_abinconc)
-    moreover have "... = (\<exists>p' p''. p = p'@p'' \<and>  match R p' \<and>  matchntimes n R p'')" using assum1 by (auto simp: match_def) 
-    ultimately show "(map action p \<in> lang R @@ lang R ^^ n) = (\<exists>p' p''. p = p' @ p'' \<and> match R p' \<and> matchntimes n R p'')" by simp
-  qed
+      fix n
+      fix p :: "('a, 's) finpath"
+      assume assum1 : "(\<And>(p :: ('a, 's) finpath). (map action p \<in> lang R ^^ n) = matchntimes n R p)"
+      have "(map action p \<in> lang R @@ lang R ^^ n) = (\<exists>p' p''. p = p' @ p'' \<and>  ((map action p') \<in> lang R) \<and> ((map action p'') \<in> lang R ^^ n))" by (rule exists_map_abinconc)
+      moreover have "... = (\<exists>p' p''. p = p'@p'' \<and>  match R p' \<and>  matchntimes n R p'')" using assum1 by (auto simp: match_def) 
+      ultimately show "(map action p \<in> lang R @@ lang R ^^ n) = (\<exists>p' p''. p = p' @ p'' \<and> match R p' \<and> matchntimes n R p'')" by simp
+    qed
   qed
   ultimately show ?thesis by blast
 qed
@@ -122,9 +126,9 @@ text \<open>Simplifications of match for all patterns of regular formulas.\<clos
 lemma matchunfold [simp] : 
   shows "match Zero p = False"
   and "match One p = (p = [])"
-  and "match (Atom a) p = (\<exists>t. p = [t] \<and> action t = a)"
-  and "match (Plus R Q) p = (match R p \<or> match Q p)"
-  and "match (Times R Q) p = (\<exists>p' p''. p = p' @ p'' \<and> match R p' \<and> match Q p'')"
+  and "match ({a}\<^sub>R) p = (\<exists>t. p = [t] \<and> action t = a)"
+  and "match (R +\<^sub>R Q) p = (match R p \<or> match Q p)"
+  and "match (R \<cdot> Q) p = (\<exists>p' p''. p = p' @ p'' \<and> match R p' \<and> match Q p'')"
   apply (simp_all add: match_def exists_map_abinconc)
   apply (rule iffI; auto)
   done
@@ -135,10 +139,40 @@ lemma matchunfoldActslist [simp] : "match (Actslist A) p = (\<exists>t. p = [t] 
 lemma matchunfoldActs [simp] : "finite A \<Longrightarrow> match (Acts A) p = (\<exists>t. p = [t] \<and> action t \<in> A)"
   by (simp add: Acts_def; rule someI2_ex; simp add: finite_list)
 
+text \<open>Defining notions of occurrence.
+A set of actions \<open>A\<close> occurs on path \<open>p\<close> if and only if there exists an action in A 
+that occurs along the path.\<close>
+
+fun alloccurringmap :: "(('s \<times> 'a \<times> 's) \<Rightarrow> 'b) \<Rightarrow> ('a, 's) path \<Rightarrow> 'b set" where
+"alloccurringmap f (fin p) = set (map f p)" |
+"alloccurringmap f (inf p) = image f (range p)"
+
+abbreviation alloccurringstates :: "'s \<Rightarrow> ('a, 's) path \<Rightarrow> 's set" where
+"alloccurringstates s p \<equiv> insert s (alloccurringmap target p)"
+
+abbreviation alloccurringactions :: "('a, 's) path \<Rightarrow> 'a set" where
+"alloccurringactions p \<equiv> alloccurringmap action p"
+
+definition occurs :: "'a set \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
+"occurs A p \<equiv> (\<exists> a \<in> A. a \<in> alloccurringactions p)"
+
+lemma occurssimps [simp] : 
+  shows "occurs A (fin p) = (\<exists> a \<in> A. a \<in> set (map action p))"
+  and "occurs A (inf p') = (\<exists> a \<in> A. a \<in> image action (range p'))"
+  by (simp_all add: occurs_def)
+
+lemma alloccursnotoccurs : "alloccurringactions p \<subseteq> A = (\<not>occurs (-A) p)"
+  unfolding occurs_def by auto
+
+lemma occurs_map_exists_fin : "a \<in> set (map f p) = (\<exists>n < length p. f (p!n) = a)"
+  apply (simp add: image_iff)
+  using in_set_conv_nth apply metis
+  done
+
 text \<open>A finite path matches \<open>Star (Acts A)\<close> (A Kleene star) if and only if 
   all its actions are in \<open>A\<close>.\<close>
 
-lemma matchstaract : "finite A \<Longrightarrow> match (Star (Acts A)) p = (set (map action p) \<subseteq> A)"
+lemma matchstaract : "finite A \<Longrightarrow> match (Acts A\<^sup>\<star>) p = (alloccurringactions (fin p) \<subseteq> A)"
   apply (induct p; simp add: matchstar_eq_matchntimes)
   apply (subgoal_tac "matchntimes 0 (Acts A) []")
   apply blast
@@ -190,35 +224,28 @@ fun indicespath :: "('a, 's) path \<Rightarrow> nat set" where
 "indicespath (fin p) = ({n. n < length p})" |
 "indicespath (inf p) = UNIV"
 
-abbreviation laststate :: "('a, 's) finpath \<Rightarrow> 's" where
-"laststate p \<equiv> target (last p)"
+fun laststate :: "'s \<Rightarrow> ('a, 's) finpath \<Rightarrow> 's" where
+"laststate s [] = s" |
+"laststate s p = target (last p)"
 
-(*change all instances of laststate to laststate'*)
-fun laststate' :: "'s \<Rightarrow> ('a, 's) finpath \<Rightarrow> 's" where
-"laststate' s [] = s" |
-"laststate' s p = target (last p)"
-
-lemma laststatesimps [simp]:
-  shows "p = [] \<Longrightarrow> laststate (t # p) = target t "
-  and "p \<noteq> [] \<Longrightarrow> laststate (t # p) = laststate p"
-  by simp_all
-
-lemma laststate'simps [simp]:
-  shows "p = [] \<Longrightarrow> laststate' s (t # p) = target t "
-  and "p \<noteq> [] \<Longrightarrow> laststate' s (t # p) = laststate' s' p"
+lemma laststatesimps:
+  shows "p = [] \<Longrightarrow> laststate s (t # p) = target t "
+  and "p \<noteq> [] \<Longrightarrow> laststate s (t # p) = laststate s' p"
   apply simp
   apply (induct p; simp)
   done
 
-lemma validfinpathlaststatee : "validfinpath M s p s' \<Longrightarrow> laststate' s p = s'"
-  apply (induct p arbitrary : s; auto)
-  using laststate'simps apply fastforce
-  done
-  
-lemma validfinpathuniquelaststate : "validfinpath M s p s' \<and> validfinpath M s p s'' \<Longrightarrow> s' = s''"
-  by (induct p arbitrary : s; auto)
+lemma laststate_conc [simp]: "laststate s (p @ p') = laststate (laststate s p) p'" 
+  by (induct p; induct p'; simp add: laststatesimps)
 
-lemma validfinpathlaststate : "p \<noteq> [] \<and> validfinpath M s p s' \<Longrightarrow> laststate p = s'"
+lemma laststatetarget [simp]:
+  shows "laststate s (t # p) = laststate (target t) p"
+  by (cases p; simp)
+
+lemma validfinpathlaststate : "validfinpath M s p s' \<Longrightarrow> laststate s p = s'"
+  by (induct p arbitrary: s, simp, simp del: laststate.simps)
+
+lemma validfinpathuniquelaststate : "validfinpath M s p s' \<and> validfinpath M s p s'' \<Longrightarrow> s' = s''"
   by (induct p arbitrary : s; auto)
 
 lemma prefleft : "n \<in> indicespath p \<Longrightarrow> (pref (Suc n) p) = (ind 0 p) # (pref n (suff (Suc 0) p))"
@@ -241,43 +268,50 @@ qed
 lemma validinfpathsplit [simp] : "validinfpath M s (conc p p') = (\<exists>s'. validfinpath M s p s' \<and> validinfpath M s' p')"
   by (induct p arbitrary: s; simp)
 
-(*opschonen*)
+lemma validinfpathsplitlaststate : "(validfinpath M s p (laststate s p) \<and> validinfpath M (laststate s p) p') = validinfpath M s (conc p p')"
+  using validinfpathsplit validfinpathlaststate by metis
+
 lemma validfinsubpath [simp] : "i < length p \<and> validfinpath M s p s' \<Longrightarrow> validfinpath M s (take i p) (source (p!i))"
-  apply (induct p arbitrary: s i)
-  apply (simp)
+  apply (induct p arbitrary: s i, simp)
 proof-
   case Cons
-  then show ?case by (cases i) auto
+  then show ?case by (cases i; auto)
 qed
 
+lemma validfinpathtakelaststate : "n < length p \<and> validfinpath M s p s' \<Longrightarrow> laststate s (take n p) = source (p!n)"
+  using validfinpathlaststate validfinsubpath by meson
+
 lemma validfinsubpathtarget [simp] : "i < length p \<and> validfinpath M s p s' \<Longrightarrow> validfinpath M s (take (Suc i) p) (target (p!i))"
-  apply (induct p arbitrary: s i)
-  apply (simp)
+  apply (induct p arbitrary: s i, simp)
 proof-
   case Cons
-  then show ?case by (cases i) auto
+  then show ?case by (cases i; auto)
 qed
 
 lemma validfinsubpathright [simp] : "i < length p \<and> validfinpath M s p s' \<Longrightarrow> validfinpath M (source (p!i)) (drop i p) s'"
-  apply (induct p arbitrary: s i)
-  apply (simp)
+  apply (induct p arbitrary: s i, simp)
 proof-
   case Cons
-  then show ?case by (cases i) auto
+  then show ?case by (cases i; auto)
 qed
 
 lemma validfinsubpathtargetright [simp] : "i < length p \<and> validfinpath M s p s' \<Longrightarrow> validfinpath M (target (p!i)) (drop (Suc i) p) s'"
-  apply (induct p arbitrary: s i)
-  apply (simp)
+  apply (induct p arbitrary: s i, simp)
 proof-
   case Cons
-  then show ?case by (cases i) auto
+  then show ?case by (cases i; auto)
 qed
  
-lemma validinfsubpath : "validinfpath M s p \<Longrightarrow> (validfinpath M s (prefix i p) (source (p i)))"
+lemma validinfsubpath [simp] : "validinfpath M s p \<Longrightarrow> validfinpath M s (prefix i p) (source (p i))"
   by (induct i arbitrary : s p; simp add: validinfpath_def)
 
+lemma validinfpathprefixlaststate : "validinfpath M s p \<Longrightarrow> laststate s (prefix n p) = source (p n)"
+  using validfinpathlaststate validinfsubpath by meson
+
 lemma validinfsubpathright [simp] : "validinfpath M s p \<Longrightarrow> validinfpath M (source (p i)) (suffix i p)"
+  by (induct i; simp add: validinfpath_def)
+
+lemma validinfsubpathtargetright [simp] : "validinfpath M s p \<Longrightarrow> validinfpath M (target (p i)) (suffix (Suc i) p)"
   by (induct i; simp add: validinfpath_def)
 
 lemma zerothtransitionfinpath : "0 < length p \<and> validfinpath M s p s' \<Longrightarrow> (p!0 \<in> transition M)"
@@ -285,7 +319,7 @@ lemma zerothtransitionfinpath : "0 < length p \<and> validfinpath M s p s' \<Lon
 
 text \<open>The \<open>i\<close>'th transition in a valid path is in the transitions of the labeled transition system\<close>
 
-lemma ithtransitionfinpath [simp] : "i < length p \<and> validfinpath M s p s' \<Longrightarrow> (p!i \<in> transition M)"
+lemma ithtransitionfinpath [simp] : "i < length p \<and> validfinpath M s p s' \<Longrightarrow> p!i \<in> transition M"
 proof-
   assume assum1: "i < length p \<and> validfinpath M s p s'"
   hence "0 < length (drop i p) \<and> validfinpath M (source (p!i)) (drop i p) s'" by auto
@@ -309,10 +343,12 @@ proof-
   ultimately show ?thesis by simp
 qed
 
-lemma Boxcomplement_locked : "finite (-B) \<Longrightarrow> (s \<in> \<lbrakk>Box (Acts (-B)) ff\<rbrakk> M e = locked M B s)"
+text \<open>Some recurring formulas and simplifications.\<close>
+
+lemma Boxcomplement_locked : "finite (-B) \<Longrightarrow> s \<in> \<lbrakk>[Acts (-B)]\<^sub>R ff\<rbrakk> M e = locked M B s"
   by (simp add: locked_def del: Box.simps; auto)
 
-lemma Diamond_enabled : "finite (\<alpha>\<^sub>e) \<Longrightarrow> (s \<in> \<lbrakk>Diamond (Acts (\<alpha>\<^sub>e)) tt\<rbrakk> M e = enabled M s \<alpha>\<^sub>e)"
+lemma Diamond_enabled : "finite (\<alpha>\<^sub>e) \<Longrightarrow> s \<in> \<lbrakk>\<langle>Acts \<alpha>\<^sub>e\<rangle>\<^sub>R tt\<rbrakk> M e = enabled M s \<alpha>\<^sub>e"
   by (simp del: Diamond.simps; auto simp: enabled_def)
 
 lemma finitesubsetUNIV [simp] : "finite (UNIV :: 'a set) \<Longrightarrow> finite (A :: 'a set)"
@@ -321,14 +357,14 @@ lemma finitesubsetUNIV [simp] : "finite (UNIV :: 'a set) \<Longrightarrow> finit
 lemma validfinpathmatchacts [simp] : "finite A \<Longrightarrow> (validfinpath M s p s' \<and> match (Acts A) p) = (\<exists>a \<in> A. (s, a, s') \<in> transition M \<and> p = [(s, a, s')])"
   by auto
 
-lemma Diamondactsempty [simp] : "finite A \<Longrightarrow> \<lbrakk>f\<rbrakk> M e = {} \<Longrightarrow> \<lbrakk>Diamond (Acts A) f\<rbrakk> M e = {}"
+lemma Diamondactsempty [simp] : "finite A \<Longrightarrow> \<lbrakk>f\<rbrakk> M e = {} \<Longrightarrow> \<lbrakk>\<langle>Acts A\<rangle>\<^sub>R f\<rbrakk> M e = {}"
   by simp
 
-lemma Diamondempty [simp] : "\<lbrakk>f\<rbrakk> M e = {} \<Longrightarrow> \<lbrakk>Diamond R f\<rbrakk> M e = {}"
+lemma Diamondempty [simp] : "\<lbrakk>f\<rbrakk> M e = {} \<Longrightarrow> \<lbrakk>\<langle>R\<rangle>\<^sub>R f\<rbrakk> M e = {}"
   by (induct R arbitrary : f e; auto)
 
 lemma Diamondmatch :
-  "s \<in> \<lbrakk>Diamond R f\<rbrakk> M e = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e)"
+  "s \<in> \<lbrakk>\<langle>R\<rangle>\<^sub>R f\<rbrakk> M e = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e)"
   apply (induct R arbitrary : f s e)
   apply simp+
   apply force
@@ -341,25 +377,24 @@ proof-
   moreover have "... = (\<exists>p p' s''. validfinpath M s (p @ p') s'' \<and> match R p \<and> match Q p' \<and> s'' \<in> \<lbrakk>f\<rbrakk> M e)" by simp
   ultimately show "(\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> (\<exists>p s''. validfinpath M s' p s'' \<and> match Q p \<and> s'' \<in> \<lbrakk>f\<rbrakk> M e)) = (\<exists>p s'. validfinpath M s p s' \<and> (\<exists>p' p''. p = p' @ p'' \<and> match R p' \<and> match Q p'') \<and> s' \<in> \<lbrakk>f\<rbrakk> M e)" by blast
 next
-  fix R f s e
-  assume IH: "\<And>f s e. ((s \<in> \<lbrakk>Diamond R f\<rbrakk> M e) = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e))"
-  show "s \<in> \<lbrakk>Diamond (Star R) f\<rbrakk> M e = (\<exists>p s'. validfinpath M s p s' \<and> match (Star R) p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e)"
-    apply (rule iffI; ((rule allI impI)+)?)
+  fix f s e
+  case IH: (Star R)
+  show ?case
+    apply (rule iffI)
   proof-
-    assume assum1 : "s \<in> \<lbrakk>Diamond (Star R) f\<rbrakk> M e"
-    let ?S' = "{s. \<exists>p s' n. validfinpath M s p s' \<and> matchntimes n R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e}"
-    have "\<And>s. s \<in> \<lbrakk>f\<rbrakk> M e \<Longrightarrow> validfinpath M s [] s \<and> matchntimes 0 R [] \<and> s \<in> \<lbrakk>f\<rbrakk> M e" by auto
+    let ?S' = "{s. \<exists>p s'. validfinpath M s p s' \<and> match (Star R) p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e}"
+    have "\<And>s. s \<in> \<lbrakk>f\<rbrakk> M e \<Longrightarrow> validfinpath M s [] s \<and> match (Star R) [] \<and> s \<in> \<lbrakk>f\<rbrakk> M e" unfolding match_def by auto
     hence "\<lbrakk>f\<rbrakk> M e \<subseteq> ?S'" by blast
-    moreover have "\<lbrakk>Diamond R (var 0)\<rbrakk> M (newenvironment e ?S') \<subseteq> ?S'"
-      proof
+    moreover {
       fix s 
       assume "s \<in> \<lbrakk>Diamond R (var 0)\<rbrakk> M (newenvironment e ?S')"
-      then obtain p s' p' s'' n where "validfinpath M s p s' \<and> match R p \<and> validfinpath M s' p' s'' \<and> matchntimes n R p' \<and> s'' \<in> \<lbrakk>f\<rbrakk> M e" using IH by auto
-      hence "validfinpath M s (p @ p') s'' \<and> matchntimes (Suc n) R (p @ p') \<and> s'' \<in> \<lbrakk>f\<rbrakk> M e" by auto
-      thus "s \<in> ?S'" by blast
-    qed
-    ultimately have "\<lbrakk>Diamond R (var 0)\<rbrakk> M (newenvironment e ?S') \<union> \<lbrakk>f\<rbrakk> M e \<subseteq> ?S'" by auto
-    thus "\<exists>p s'. validfinpath M s p s' \<and> match (Star R) p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e" using assum1 by (simp add: matchstar_eq_matchntimes; auto)
+      from this IH obtain p s' p' s'' where "validfinpath M s p s' \<and> match R p \<and> validfinpath M s' p' s'' \<and> match (Star R) p' \<and> s'' \<in> \<lbrakk>f\<rbrakk> M e" by auto
+      hence "validfinpath M s (p @ p') s'' \<and> match (Star R) (p @ p') \<and> s'' \<in> \<lbrakk>f\<rbrakk> M e" unfolding match_def by auto
+      hence "s \<in> ?S'" by blast
+    }
+    ultimately have "\<lbrakk>Diamond R (var 0)\<rbrakk> M (newenvironment e ?S') \<union> \<lbrakk>f\<rbrakk> M e \<subseteq> ?S'" by blast
+    moreover assume "s \<in> \<lbrakk>Diamond (Star R) f\<rbrakk> M e"
+    ultimately show "\<exists>p s'. validfinpath M s p s' \<and> match (Star R) p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e" by auto
   next
     assume "\<exists>p s'. validfinpath M s p s' \<and> match (Star R) p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e"
     then obtain p s' n where assum1: "validfinpath M s p s' \<and>  matchntimes n R p \<and> s' \<in> \<lbrakk>f\<rbrakk> M e" by (auto simp: matchstar_eq_matchntimes)
@@ -385,52 +420,89 @@ next
   qed
 qed
 
-text \<open>Defining notions of occurence.
-A set of actions \<open>A\<close> occurs on path \<open>p\<close> if and only if there exists an action in A 
-that occurs along the path.\<close>
+text \<open>For small examples (for which the formula holds in all states) 
+  we do not have to use \<open>Diamondmatch\<close>; auto will solve the lemma.
+  The absence of such paths is harder to prove.\<close>
 
-fun alloccurringmap :: "(('s \<times> 'a \<times> 's) \<Rightarrow> 'b) \<Rightarrow> ('a, 's) path \<Rightarrow> 'b set" where
-"alloccurringmap f (fin p) = set (map f p)" |
-"alloccurringmap f (inf p) = image f (range p)"
-
-abbreviation alloccurringstates :: "'s \<Rightarrow> ('a, 's) path \<Rightarrow> 's set" where
-"alloccurringstates s p \<equiv> insert s (alloccurringmap target p)"
-
-abbreviation alloccurringactions :: "('a, 's) path \<Rightarrow> 'a set" where
-"alloccurringactions p \<equiv> alloccurringmap action p"
-
-definition occurs :: "'a set \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
-"occurs A p \<equiv> (\<exists> a \<in> A. a \<in> alloccurringactions p)"
-
-lemma occurssimps [simp] : 
-  shows "occurs A (fin p) = (\<exists> a \<in> A. a \<in> set (map action p))"
-  and "occurs A (inf p') = (\<exists> a \<in> A. a \<in> image action (range p'))"
-  by (simp_all add: occurs_def)
-
-lemma occurs_exists : "(a \<in> set (map action p)) = (\<exists>n < length p. action (p!n) = a)"
-  apply (simp add: image_iff)
-  using in_set_conv_nth apply metis
+lemma example_Star: "\<lbrakk>\<langle>{\<b>}\<^sub>R\<^sup>\<star> \<cdot> {\<a>}\<^sub>R\<rangle>\<^sub>R tt\<rbrakk> example_lts e = {s\<^sub>0, s\<^sub>1, s\<^sub>2}"
+  apply (rule subset_antisym)
+  using example_states.exhaust apply blast
+  apply (auto simp: example_lts_def)
   done
 
+lemma Diamondor : "\<lbrakk>\<langle>R\<rangle>\<^sub>R (f \<or>\<^sub>\<mu> g)\<rbrakk> M e = \<lbrakk>\<langle>R\<rangle>\<^sub>R f \<or>\<^sub>\<mu> \<langle>R\<rangle>\<^sub>R g\<rbrakk> M e"
+proof-
+  have "\<And>s. s \<in> \<lbrakk>Diamond R (or f g)\<rbrakk> M e = (s \<in> \<lbrakk>or (Diamond R f) (Diamond R g)\<rbrakk> M e)" by (auto simp: Diamondmatch)
+  thus ?thesis by auto
+qed
+
+lemma Boxmatch : "s \<in> \<lbrakk>[R]\<^sub>R f\<rbrakk> M e = (\<forall>p s'. validfinpath M s p s' \<and> match R p \<longrightarrow> s' \<in> \<lbrakk>f\<rbrakk> M e)"
+proof-
+  have "\<lbrakk>Box R f\<rbrakk> M e = \<lbrakk>neg (Diamond R (neg f))\<rbrakk> M e" by (subst negDiamond; rule Box_eq; simp)
+  moreover have "s \<in> \<lbrakk>Diamond R (neg f)\<rbrakk> M e = (\<exists>p s'. validfinpath M s p s' \<and> match R p \<and> s' \<notin> \<lbrakk>f\<rbrakk> M e)" by (subst Diamondmatch; simp)
+  ultimately show ?thesis by auto
+qed 
+
+lemma Boxand : "\<lbrakk>[R]\<^sub>R (f \<and>\<^sub>\<mu> g)\<rbrakk> M e = \<lbrakk>[R]\<^sub>R f \<and>\<^sub>\<mu> [R]\<^sub>R g\<rbrakk> M e"
+proof-
+  have "\<And>s. s \<in> \<lbrakk>Box R (and' f g)\<rbrakk> M e = (s \<in> \<lbrakk>and' (Box R f) (Box R g)\<rbrakk> M e)" by (auto simp: Boxmatch)
+  thus ?thesis by auto
+qed
+
+text \<open>Simplification rules for occurrence.\<close>
+
+lemma addpathsnotoccurs: "validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> validfinpath M s' p' s'' \<and> \<not>occurs \<alpha>\<^sub>f (fin p') \<Longrightarrow> validfinpath M s (p @ p') s'' \<and> \<not>occurs \<alpha>\<^sub>f (fin (p @ p'))"
+  by auto
+
+lemma alloccurringactionsfin : "alloccurringactions (fin p) = {action (p!n)| n. n < length p}"
+proof-
+  have "alloccurringactions (fin p) = {a. a \<in> set (map action p)}" by simp
+  moreover have "... = {a. \<exists>n < length p. action (p!n) = a}" by (subst occurs_map_exists_fin; simp)
+  ultimately show "alloccurringactions (fin p) = {action (p!n)| n. n < length p}" by auto
+qed
+
+lemma alloccurringactionsfinright : "alloccurringactions (fin (drop i p)) \<subseteq> alloccurringactions (fin p)" 
+  unfolding alloccurringactionsfin by auto
+
+lemma alloccurringactionsfinleft : "alloccurringactions (fin (take i p)) \<subseteq> alloccurringactions (fin p)" 
+  unfolding alloccurringactionsfin by auto
+
+lemma occurs_max_exists : "a \<in> set (map action p) \<Longrightarrow> (\<exists>n < length p. action (p!n) = a \<and> a \<notin> alloccurringactions (fin (drop (Suc n) p)))"
+proof-
+  let ?n = "Max {n. n < length p \<and> action (p!n) = a}"
+  assume "a \<in> set (map action p)"
+  hence "\<exists>n < length p. action (p!n) = a" using occurs_map_exists_fin by metis
+  hence max_exists: "finite {n. n < length p \<and> action (p!n) = a} \<and> {n. n < length p \<and> action (p!n) = a} \<noteq> {}" by auto 
+  hence "\<forall>m. m < length p \<and> m > ?n \<longrightarrow> action (p!m) \<noteq> a" using Max_ge leD by blast
+  moreover have "\<And>n. (\<forall>m. m < length p \<and> m > n \<longrightarrow> action (p!m) \<noteq> a) \<Longrightarrow> (\<forall>m < length (drop (Suc n) p). action ((drop (Suc n) p)!m) \<noteq> a)" by auto
+  ultimately have "\<forall>m < length (drop (Suc ?n) p). action ((drop (Suc ?n) p)!m) \<noteq> a" by blast
+  hence "a \<notin> alloccurringactions (fin (drop (Suc ?n) p))" unfolding alloccurringactionsfin by auto
+  moreover have "?n < length p \<and> action (p!?n) = a" using max_exists Max_in by blast
+  ultimately show "\<exists>n < length p. action (p!n) = a \<and> a \<notin> alloccurringactions (fin (drop (Suc n) p))" by auto
+qed
+
 lemma occursfinalternative : "occurs A (fin p) = (\<exists>n < length p. action (p!n) \<in> A)"
-  unfolding occurssimps alloccurringmap.simps using occurs_exists by metis
+  unfolding occurssimps alloccurringmap.simps using occurs_map_exists_fin by metis
 
 lemma occursinfalternative : "occurs A (inf p) = (\<exists> n. action (p n) \<in> A)"
   by auto
+
+lemma notoccursempty: "\<not>occurs {} (fin p)" 
+  by (simp add: occurs_def)
 
 lemma alloccurringstatesalternative : "alloccurringstates s p = insert s {target (ind i p) | i. i \<in> indicespath p}"
   apply (cases p; auto)
   using in_set_conv_nth sourceactiontargetsimp(3) apply metis
   done
 
-lemma sourcetargetfin : "validfinpath M s p s' \<Longrightarrow> insert s (set (map target p)) = insert s' (set (map source p))"
-  by (induct p arbitrary: s; auto)
+lemma alloccurringstatesinset : "s \<in> S' \<and> (\<forall>n \<in> indicespath p. target (ind n p) \<in> S') \<Longrightarrow> alloccurringstates s p \<subseteq> S'"
+  unfolding alloccurringstatesalternative by auto
 
-lemma sourcetargetinf : "validinfpath M s p \<Longrightarrow> insert s (image target (range p)) = image source (range p)"
-  apply (rule set_eqI)
-  apply (simp add: validinfpath_def image_iff)
-  using nat.exhaust apply metis  
-  done
+lemma sourcetargetfin : "validfinpath M s p s' \<Longrightarrow> insert s (set (map target p)) = insert s' (set (map source p))"
+  by (induct p arbitrary: s; auto) 
+
+lemma laststateoccurs: "validfinpath M s p s' \<Longrightarrow> s' \<in> alloccurringstates s (fin p)"
+  unfolding alloccurringmap.simps by (subst sourcetargetfin; auto)
 
 definition occursstate :: "'s set \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
 "occursstate S' s p \<equiv> (\<exists>s' \<in> S'. s' \<in> alloccurringstates s p)"
@@ -440,8 +512,34 @@ lemma occursstatesimps [simp] :
   and "occursstate S' s (inf p') = (\<exists> s' \<in> S'. s' \<in> insert s (image target (range p')))"
   by (simp_all add: occursstate_def)
 
+lemma occursstatealternative : "occursstate S' s p = (s \<in> S' \<or> (\<exists> n \<in> indicespath p. target (ind n p) \<in> S'))"
+  apply (cases p; simp add: image_iff)
+  using in_set_conv_nth apply metis
+  apply auto
+  done
+
+lemma notemptypath : "s \<notin> S' \<and> (occursstate S' s (fin p) \<or> occurs A (fin p)) \<longrightarrow> p \<noteq> []" 
+  by (cases p; simp)
+
+lemma notoccursendpath : "validfinpath M s p s' \<and> \<not>occursstate S' s (fin p) \<Longrightarrow> s' \<notin> S'"
+proof-
+  assume "validfinpath M s p s' \<and> \<not>occursstate S' s (fin p)"
+  hence "validfinpath M s p s' \<and> \<not>(\<exists>s'\<in>S'. s' \<in> insert s (set (map target p)))" by simp
+  hence "\<forall> s'' \<in> S'. s'' \<notin> insert s' (set (map source p))" using sourcetargetfin by metis
+  thus ?thesis by auto
+qed
+
+text \<open>Defining completeness criteria.\<close>
+
+fun progressing :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
+"progressing M B s (fin p) = locked M B (laststate s p)" |
+"progressing M B s (inf p) = True"
+
 definition perpetuallyenabled :: "('a, 's) lts \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Rightarrow> 'a set" where
 "perpetuallyenabled M s p = {a . (\<forall>s \<in> alloccurringstates s p. a \<in> enabledactions M s)}"
+
+lemma perpetuallyenabled_alternative: "perpetuallyenabled M s p = enabledactionsset M (alloccurringstates s p)"
+  by (simp add: enabledactionsset_def perpetuallyenabled_def)
 
 definition allsuffixes :: "'s \<Rightarrow> ('a, 's) path \<Rightarrow> ('s \<Rightarrow> ('a, 's) path \<Rightarrow> bool) \<Rightarrow> bool" where
 "allsuffixes s p P = (P s p \<and> (\<forall>i \<in> indicespath p. P (target (ind i p)) (suff (Suc i) p)))"
@@ -452,8 +550,11 @@ definition relentlesslyenabled :: "('a, 's) lts \<Rightarrow> 's \<Rightarrow> (
 definition reachableactionsset :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 's set \<Rightarrow> 'a set" where
 "reachableactionsset M B S' = {a. \<forall>s \<in> S'. \<exists>p s'. validfinpath M s p s' \<and> \<not>occurs B (fin p) \<and> a \<in> enabledactions M s'}"
 
-lemma reachableactionssubset : "B' \<subseteq> A \<Longrightarrow> reachableactionsset M B A \<subseteq> reachableactionsset M B B'"
+lemma reachableactionsstatessubset : "A' \<subseteq> A \<Longrightarrow> reachableactionsset M B A \<subseteq> reachableactionsset M B A'"
   by (auto simp: reachableactionsset_def)
+
+lemma reachableactionssubset : "B' \<subseteq> B \<Longrightarrow> reachableactionsset M B S' \<subseteq> reachableactionsset M B' S'"
+  unfolding reachableactionsset_def occurs_def by blast
 
 definition reachableactions :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 's \<Rightarrow> 'a set" where
 "reachableactions M B s = reachableactionsset M B {s}"
@@ -461,41 +562,62 @@ definition reachableactions :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 
 lemma reachableactionsdef : "reachableactions M B s = {a. \<exists>p s'. validfinpath M s p s' \<and> \<not>occurs B (fin p) \<and> a \<in> enabledactions M s'}"
   by (simp add: reachableactions_def reachableactionsset_def)
 
-lemma "reachableactions M B s = reachableactionsset M B {s}"
-  by (simp add: reachableactions_def reachableactionsset_def)
+lemma enabled_reachable : "enabledactions M s \<subseteq> reachableactions M B s"
+  unfolding enabledactions_def reachableactions_def reachableactionsset_def
+  by (subgoal_tac "validfinpath M s [] s \<and> \<not>occurs B (fin [])"; (blast|simp))
+
+lemma Diamondreachable : "finite (-B) \<Longrightarrow> s \<in> \<lbrakk>\<langle>Acts (-B)\<^sup>\<star>\<rangle>\<^sub>R \<langle>a\<rangle>\<^sub>\<mu>tt\<rbrakk> M e = (a \<in> reachableactions M B s)"
+  by (simp only: Diamondmatch matchstaract reachableactionsdef, auto)
+
+lemma Boxnotreachable : "finite (-B) \<Longrightarrow> s \<in> \<lbrakk>[Acts (-B)\<^sup>\<star>]\<^sub>R [a]\<^sub>\<mu>ff\<rbrakk> M e = (a \<notin> reachableactions M B s)"
+  by (simp only: Boxmatch matchstaract reachableactionsdef, auto)
 
 definition perpetuallyreachable :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow>'s \<Rightarrow> ('a, 's) path \<Rightarrow> 'a set" where
 "perpetuallyreachable M B s p = {a . (\<forall>s \<in> alloccurringstates s p. a \<in> reachableactions M B s)}"
 
-lemma Diamondreachable : "finite (-B) \<Longrightarrow> s \<in> \<lbrakk>Diamond (Star (Acts (-B))) (diamond a tt)\<rbrakk> M e = (a \<in> reachableactions M B s)"
-  by (simp only: Diamondmatch matchstaract reachableactionsdef; auto)
+lemma perpetuallyenabled_perpetuallyreachable : "perpetuallyenabled M s p \<subseteq> perpetuallyreachable M B s p"
+  unfolding perpetuallyenabled_def perpetuallyreachable_def using enabled_reachable by fastforce
 
-lemma Boxnotreachable : "finite (-B) \<Longrightarrow> s \<in> \<lbrakk>Box (Star (Acts (-B))) (box a ff)\<rbrakk> M e = (a \<notin> reachableactions M B s)"
-proof-
-  assume "finite (-B)"
-  hence "s \<in> \<lbrakk>Diamond (Star (Acts (-B))) (diamond a tt)\<rbrakk> M e = (a \<in> reachableactions M B s)" by (rule Diamondreachable)
-  hence "s \<in> \<lbrakk>neg (Diamond (Star (Acts (-B))) (diamond a tt))\<rbrakk> M e = (a \<notin> reachableactions M B s)" by simp
-  moreover { 
-    have "\<lbrakk>neg (diamond a tt)\<rbrakk> M e = \<lbrakk>box a ff\<rbrakk> M e" by auto
-    hence "\<lbrakk>Box (Star (Acts (-B))) (neg (diamond a tt))\<rbrakk> M e = \<lbrakk>Box (Star (Acts (-B))) (box a ff)\<rbrakk> M e" by (rule Box_eq)
-    hence "\<lbrakk>neg (Diamond (Star (Acts (-B))) (diamond a tt))\<rbrakk> M e = \<lbrakk>Box (Star (Acts (-B))) (box a ff)\<rbrakk> M e" by (subst negDiamond)
-  }
-  ultimately show ?thesis by blast
-qed
+lemma perpetuallyenabled_relentlesslyenabled : "perpetuallyenabled M s p \<subseteq> relentlesslyenabled M s p"
+  by (auto simp: relentlesslyenabled_def perpetuallyenabled_alternative enabledactionsset_def allsuffixes_def alloccurringstatesalternative)
 
-lemma occursstatealternative : "occursstate S' s p = (s \<in> S' \<or> (\<exists> n \<in> indicespath p. target (ind n p) \<in> S'))"
-  apply (cases p; simp add: image_iff)
-  using in_set_conv_nth apply metis
-  apply auto
-  done
+definition relentlesslyreachable :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Rightarrow> 'a set" where
+"relentlesslyreachable M B s p = {a . allsuffixes s p (\<lambda>s p. \<exists>s \<in> alloccurringstates s p. a \<in> reachableactions M B s)}"
 
-lemma notoccursendpath : "validfinpath M s p s' \<and> \<not>occursstate S' s (fin p) \<Longrightarrow> s' \<notin> S'"
-proof-
-  assume "validfinpath M s p s' \<and> \<not> occursstate S' s (fin p)"
-  hence "validfinpath M s p s' \<and> \<not> (\<exists>s'\<in>S'. s' \<in> insert s (set (map target p)))" by simp
-  hence "\<forall> s'' \<in> S'. s'' \<notin> insert s' (set (map source p))" using sourcetargetfin by metis
-  thus ?thesis by auto
-qed
+lemma relentlesslyenabled_relentlesslyreachable: "relentlesslyenabled M s p \<subseteq> relentlesslyreachable M B s p"
+  unfolding relentlesslyenabled_def relentlesslyreachable_def allsuffixes_def using enabled_reachable by fastforce
+
+definition WFA :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
+"WFA M B s p = allsuffixes s p (\<lambda>s p. perpetuallyenabled M s p -B \<subseteq> alloccurringactions p)"
+
+abbreviation preimagerelation :: "('a \<Rightarrow> 'a \<Rightarrow> bool) \<Rightarrow> 'a set \<Rightarrow> 'a set" where 
+"preimagerelation A A' \<equiv> {a. \<forall>a' \<in> A'. A a a'}"
+
+definition concurrency :: "('a, 's) lts \<Rightarrow> ('a \<Rightarrow> 'a \<Rightarrow> bool) \<Rightarrow> bool" where
+"concurrency M con = (irreflp con \<and> (\<forall>p s s'. validfinpath M s p s' \<longrightarrow> (enabledactions M s \<inter> preimagerelation con (alloccurringactions (fin p)) \<subseteq> enabledactions M s')))"
+
+definition JA :: "('a, 's) lts \<Rightarrow> ('a \<Rightarrow> 'a \<Rightarrow> bool) \<Rightarrow> 'a set \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
+"JA M con B s p = allsuffixes s p (\<lambda>s p. (\<forall>a \<in> enabledactions M s -B. (\<exists>a'. \<not>con a a' \<and> a' \<in> alloccurringactions p)))"
+
+definition WHFA :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
+"WHFA M B s p = allsuffixes s p (\<lambda>s p. perpetuallyreachable M B s p -B \<subseteq> alloccurringactions p)"
+
+definition SFA :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
+"SFA M B s p = allsuffixes s p (\<lambda>s p. relentlesslyenabled M s p -B \<subseteq> alloccurringactions p)"
+
+definition SHFA :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
+"SHFA M B s p = allsuffixes s p (\<lambda>s p. relentlesslyreachable M B s p -B \<subseteq> alloccurringactions p)"
+
+lemma WHFA_WFA : "WHFA M B s p \<Longrightarrow> WFA M B s p"
+  unfolding WFA_def WHFA_def allsuffixes_def
+  using perpetuallyenabled_perpetuallyreachable by fastforce
+
+lemma SFA_WFA : "SFA M B s p \<Longrightarrow> WFA M B s p"
+  unfolding SFA_def WFA_def allsuffixes_def
+  using perpetuallyenabled_relentlesslyenabled by fastforce
+
+lemma SHFA_SFA : "SHFA M B s p \<Longrightarrow> SFA M B s p"
+  unfolding SFA_def SHFA_def allsuffixes_def using relentlesslyenabled_relentlesslyreachable by fastforce
 
 text \<open>Defining the extension of a finite path.\<close>
 
@@ -506,10 +628,10 @@ fun extendfinpath :: "('a, 's) finpath \<Rightarrow> ('a, 's) path \<Rightarrow>
 lemma extendfinpath_pref_suff : "p = extendfinpath (pref i p) (suff i p)"
   by (cases p; simp)
 
-lemma extendfinpath_extendfinpath : "extendfinpath p (extendfinpath p' p'') = extendfinpath (p @ p') p''"
+lemma extendfinpath_extendfinpath [simp] : "extendfinpath (p @ p') p'' = extendfinpath p (extendfinpath p' p'')"
   by (cases p''; simp)
 
-lemma extendfinemptypath [simp] : "(extendfinpath [] p) = p"
+lemma extendfinemptypath [simp] : "extendfinpath [] p = p"
   by (cases p; simp)
 
 lemma extendfinpath_ind [simp] : "i < length p \<Longrightarrow> ind i (extendfinpath p p') = p ! i" 
@@ -518,11 +640,20 @@ lemma extendfinpath_ind [simp] : "i < length p \<Longrightarrow> ind i (extendfi
 lemma extendfinpath_ind_right [simp] : "i \<ge> length p \<Longrightarrow> ind i (extendfinpath p p') = ind (i - length p) p'" 
   by (cases p'; simp add: nth_append_right)
 
+lemma extendfinpath_pref [simp] : "i \<le> length p \<Longrightarrow> pref i (extendfinpath p p') = take i p" 
+  by (cases p'; simp)
+
+lemma extendfinpath_pref_right [simp] : "i > length p \<Longrightarrow> pref i (extendfinpath p p') = p @ pref (i - length p) p'" 
+  by (cases p'; simp)
+
 lemma extendfinpath_suff [simp] : "i < length p \<Longrightarrow> suff i (extendfinpath p p') = extendfinpath (drop i p) p'" 
   by (cases p'; simp)
 
 lemma extendfinpath_suff_right [simp] : "i \<ge> length p \<Longrightarrow> suff i (extendfinpath p p') = suff (i - length p) p'" 
   by (cases p'; simp)
+
+lemma validpathsplit: "validpath M s (extendfinpath p p') = (\<exists>s'. validfinpath M s p s' \<and> validpath M s' p')"
+  using validfinpathsplit by (cases p'; simp; metis)
 
 lemma occursleft : "occurs S' (fin p) \<Longrightarrow> occurs S' (extendfinpath p p')"
   by (cases p'; auto)
@@ -530,34 +661,89 @@ lemma occursleft : "occurs S' (fin p) \<Longrightarrow> occurs S' (extendfinpath
 lemma occursright : "occurs S' p' \<Longrightarrow> occurs S' (extendfinpath p p')"
   by (cases p'; auto)
 
-(*add for inf too?*)
-lemma notoccursfinleft : "\<not>occurs S' (fin p) \<Longrightarrow> \<not>occurs S' (fin (take i p))"
+lemma occursfinleft : "occurs S' (fin (take i p)) \<Longrightarrow> occurs S' (fin p)"
+  by (simp only: occursfinalternative, auto)
+
+lemma notoccursfinright : "\<not>occurs S' (fin p) \<Longrightarrow> \<not>occurs S' (fin (drop i p))"
   by (simp only: occursfinalternative; simp)
 
-lemma notoccursfinright : "\<not> occurs S' (fin p) \<Longrightarrow> \<not>occurs S' (fin (drop i p))"
-  by (simp only: occursfinalternative; simp)
+lemma occursfinright : "occurs S' (fin (drop i p)) \<Longrightarrow> occurs S' (fin p)"
+  using notoccursfinright by blast
 
 lemma occursstateleft: "occursstate S' s (fin p) \<Longrightarrow> (occursstate S' s (extendfinpath p p'))"
   by (cases p'; auto)
-                                                      
-lemma occursstateright : "p \<noteq> [] \<and> occursstate S' (laststate p) p' \<Longrightarrow> occursstate S' s (extendfinpath p p')"
-  apply (cases p'; subgoal_tac "p \<noteq> [] \<longrightarrow> occursstate {laststate p} s (extendfinpath p p')"; induct p; simp)
-  apply blast+
-  done
 
+lemma alloccurringstatesright: "alloccurringstates (laststate s p) p' \<subseteq> alloccurringstates s (extendfinpath p p')"
+  by (cases p'; induct p; auto)
+
+lemma occursstateright : "occursstate S' (laststate s p) p' \<Longrightarrow> occursstate S' s (extendfinpath p p')"
+  unfolding occursstate_def using alloccurringstatesright insert_absorb insert_subset by metis
+
+lemma occursleftorright :
+  assumes "occurs A (fin p) \<or> occursstate S' s (fin p) \<or> occurs A p' \<or> occursstate S' (laststate s p) p'"
+  shows "occurs A (extendfinpath p p') \<or> occursstate S' s (extendfinpath p p')" 
+  using assms occursleft occursright occursstateleft occursstateright by metis
+                                                      
 lemma occursstaterightvalidpath : "validfinpath M s p s' \<and> occursstate S' s' p' \<Longrightarrow> occursstate S' s (extendfinpath p p')"
-proof-
-  assume assum1 : "validfinpath M s p s' \<and> occursstate S' s' p'"
-  hence "p = [] \<Longrightarrow> occursstate S' s (extendfinpath p p')" by simp
-  moreover have "p \<noteq> [] \<Longrightarrow> occursstate S' s (extendfinpath p p')" using assum1 occursstateright validfinpathlaststate by metis
-  ultimately show ?thesis by blast  
-qed
+  using occursstateright validfinpathlaststate by metis
 
 lemma occursempty : "occurs A (fin p) \<Longrightarrow> p \<noteq> []"
-  by (induct p; simp)
+  by (cases p; simp)
 
 lemma occursstateempty : "occursstate S' s (fin p) \<and> s \<notin> S' \<Longrightarrow> p \<noteq> []"
-  by (induct p; simp)
+  by (cases p; simp)
+
+lemma allnextstatesnotlocked: 
+  assumes "S' = {s. \<nexists>p s'. validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> P s'}"
+  and "s \<in> S'"
+  and "validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p)"
+  shows "alloccurringstates s (fin p) \<subseteq> S'"
+  unfolding alloccurringstatesalternative
+  apply rule
+  using assms(2) apply auto
+proof (rule ccontr)
+  fix i
+  assume "i < length p"
+  hence validsubpath: "validfinpath M s (take (Suc i) p) (target (p!i)) \<and> \<not>occurs \<alpha>\<^sub>f (fin (take (Suc i) p))" using assms(3) validfinsubpathtarget occursfinleft by metis
+  assume "target (p ! i) \<notin> S'"
+  then obtain p' s'' where "validfinpath M (target (p ! i)) p' s'' \<and> \<not>occurs \<alpha>\<^sub>f (fin p') \<and> P s''" using assms(1) by auto
+  hence "validfinpath M s (take (Suc i) p @ p') s'' \<and> \<not>occurs \<alpha>\<^sub>f (fin (take (Suc i) p @ p')) \<and> P s''" using validsubpath by auto
+  thus "False" using assms(1, 2) by blast
+qed
+
+lemma notlockedoccurs : "s \<in> {s. \<nexists>p s'. validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> P s'} \<and> validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<Longrightarrow> s' \<in> {s. \<nexists>p s'. validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> P s'}"
+proof-
+  assume assum1: "s \<in> {s. \<nexists>p s'. validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> P s'} \<and> validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p)"
+  hence "alloccurringstates s (fin p) \<subseteq> {s. \<nexists>p s'. validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> P s'}" by (subst allnextstatesnotlocked[of _ M \<alpha>\<^sub>f P]; blast)
+  moreover have "s' \<in> alloccurringstates s (fin p)" using assum1 laststateoccurs by metis
+  ultimately show ?thesis by blast
+qed
+
+lemma notlocked : "s \<in> {s. \<nexists>p s'. validfinpath M s p s' \<and> P s'} \<and> validfinpath M s p s' \<Longrightarrow> s' \<in> {s. \<nexists>p s'. validfinpath M s p s' \<and> P s'}"
+  by (insert notlockedoccurs[of s M "{}" P]; auto)
+
+lemma occurringactionssubpath : "alloccurringactions p' \<subseteq> alloccurringactions (extendfinpath p p')"
+  by (cases p'; induct p; auto)
+
+lemma enabledactionssubset : "B \<subseteq> A \<Longrightarrow> enabledactionsset M A \<subseteq> enabledactionsset M B"
+  by (auto simp: enabledactionsset_def)
+
+lemma enabledactionsset_subpath: "laststate s p = s' \<Longrightarrow> enabledactionsset M (alloccurringstates s (extendfinpath p p')) \<subseteq> enabledactionsset M (alloccurringstates s' p')"
+  using alloccurringstatesright enabledactionssubset by meson
+
+lemma reachableactionsset_subpath: "laststate s p = s' \<Longrightarrow> reachableactionsset M B (alloccurringstates s (extendfinpath p p')) \<subseteq> reachableactionsset M B (alloccurringstates s' p')"
+  using alloccurringstatesright reachableactionsstatessubset by meson
+
+text \<open>Simplification rules for \<open>allsuffixes\<close>.\<close>
+
+lemma allsuffixes_validinfpath : "validinfpath M s p \<Longrightarrow> allsuffixes s (inf p) P = (\<forall>i. P (source (p i)) (inf (suffix i p)))"
+  apply (auto simp: allsuffixes_def validinfpath_def)
+  using not0_implies_Suc suffix_0 apply metis
+  using suffix_0 apply metis
+  done
+
+lemma suffixallsuffixesinf: "validinfpath M s p \<and> allsuffixes s (inf p) P \<Longrightarrow> allsuffixes (source (p n)) (inf (suffix n p)) P"
+  unfolding allsuffixes_def by (cases n; simp add: validinfpath_def; auto)
 
 lemma allsuffixesfinempty [simp] : "allsuffixes s (fin []) P = P s (fin [])" by (simp add: allsuffixes_def)
 
@@ -571,36 +757,75 @@ proof-
   ultimately show "(P s (extendfinpath [t] p) \<and> (\<forall>i\<in>indicespath (extendfinpath [t] p). P (target (ind i (extendfinpath [t] p))) (suff i p))) = (P s (extendfinpath [t] p) \<and> P (target t) p \<and> (\<forall>i\<in>indicespath p. P (target (ind i p)) (suff (Suc i) p)))" using predextend by auto
 qed
 
-lemma allsuffixes_validinfpath: "validinfpath M s p \<Longrightarrow> allsuffixes s (inf p) P = (\<forall>i. P (source (p i)) (inf (suffix i p)))"
-  apply (simp add: allsuffixes_def validinfpath_def) 
-proof-
-  have "(P (source (p 0)) (inf p) \<and> (\<forall>i. P (source (p (Suc i))) (inf (suffix (Suc i) p)))) = (P (source (p 0)) (inf (suffix 0 p)) \<and> (\<forall>i. P (source (p (Suc i))) (inf (suffix (Suc i) p))))" by simp
-  moreover have "... =  (\<forall>i. P (source (p i)) (inf (suffix i p)))" using nat.collapse by metis
-  ultimately show "(P (source (p 0)) (inf p) \<and> (\<forall>i. P (source (p (Suc i))) (inf (suffix (Suc i) p)))) = (\<forall>i. P (source (p i)) (inf (suffix i p)))" by auto
-qed
-
-lemma P_extendpath: 
-  assumes "\<And>t p. t \<in> transition M \<Longrightarrow> P (source t) (extendfinpath [t] p) = P (target t) p" 
-  shows "validfinpath M s p s' \<Longrightarrow> P s' p' = P s (extendfinpath p p')"
+lemma allsuffixes_extendpath: "allsuffixes s (extendfinpath p p') P \<Longrightarrow> allsuffixes (laststate s p)  p' P"
   apply (induct p arbitrary: s)
   apply simp
 proof-
   fix t p s
-  assume IH: "(\<And>s. validfinpath M s p s' \<Longrightarrow> P s' p' = P s (extendfinpath p p'))"
-  have "extendfinpath (t # p) p' = extendfinpath ([t] @ p) p'" by simp
-  moreover have "... = extendfinpath [t] (extendfinpath p p')" using extendfinpath_extendfinpath by metis
-  moreover assume "validfinpath M s (t # p) s'"
-  ultimately show "P s' p' = P s (extendfinpath (t # p) p')" using IH assms by simp
+  assume IH : "\<And>s. allsuffixes s (extendfinpath p p') P \<Longrightarrow> allsuffixes (laststate s p) p' P"
+  assume "allsuffixes s (extendfinpath (t # p) p') P"
+  hence "allsuffixes s (extendfinpath [t] (extendfinpath p p')) P" by (cases p'; auto)
+  hence "allsuffixes (target t) (extendfinpath p p') P" by simp
+  thus "allsuffixes (laststate s (t # p)) p' P" using IH laststatetarget by metis
 qed
 
-definition WFA :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
-"WFA M B s p = allsuffixes s p (\<lambda>s p. perpetuallyenabled M s p \<inter> -B \<subseteq> alloccurringactions p)"
+lemma allsuffixes_extendpath_valid: "validfinpath M s p s' \<and> allsuffixes s (extendfinpath p p') P \<Longrightarrow> allsuffixes s' p' P"
+  using allsuffixes_extendpath validfinpathlaststate by metis
 
-lemma perpetuallyenabled_alternative: "perpetuallyenabled M s p = enabledactionsset M (alloccurringstates s p)"
-  by (simp add: enabledactionsset_def perpetuallyenabled_def)
+lemma allsuffixes_extendpath_iff: 
+  assumes "\<And>t p. t \<in> transition M \<and> allsuffixes (target t) p P \<Longrightarrow> P (source t) (extendfinpath [t] p)" 
+  shows "validfinpath M s p s' \<Longrightarrow> allsuffixes s (extendfinpath p p') P = allsuffixes s' p' P"
+  apply (rule iffI)
+  using allsuffixes_extendpath_valid apply metis
+  apply (induct p arbitrary: s)
+  apply simp
+proof-
+  fix t p s
+  assume IH: "\<And>s. validfinpath M s p s' \<Longrightarrow> allsuffixes s' p' P \<Longrightarrow> allsuffixes s (extendfinpath p p') P"
+  assume "validfinpath M s (t # p) s'"
+  moreover assume "allsuffixes s' p' P"
+  ultimately have "s = source t \<and> t \<in> transition M \<and> allsuffixes (target t) (extendfinpath p p') P" using IH by simp
+  moreover from this have "P s (extendfinpath [t] (extendfinpath p p'))" using assms by simp
+  ultimately have "allsuffixes s (extendfinpath [t] (extendfinpath p p')) P" by simp
+  thus "allsuffixes s (extendfinpath (t # p) p') P" by (cases p'; auto)
+qed
 
-lemma perpetuallyenabled_relentlesslyenabled : "perpetuallyenabled M s p \<subseteq> relentlesslyenabled M s p"
-  by (auto simp: relentlesslyenabled_def perpetuallyenabled_alternative enabledactionsset_def allsuffixes_def alloccurringstatesalternative)
+lemma validfinpath_allsuffixes_empty: 
+  assumes "\<And>t p. t \<in> transition M \<and> allsuffixes (target t) p P \<Longrightarrow> P (source t) (extendfinpath [t] p)" 
+  shows "validfinpath M s p s' \<Longrightarrow> allsuffixes s (fin p) P = P s' (fin [])"
+proof-
+  assume "validfinpath M s p s'"
+  hence "allsuffixes s (extendfinpath p (fin [])) P = P s' (fin [])" by (subst allsuffixes_extendpath_iff; simp add: assms)
+  thus ?thesis by simp
+qed
+
+lemma P_extendpath:
+  assumes "\<And>t p. t \<in> transition M \<and> validpath M (target t) p \<Longrightarrow> P (source t) (extendfinpath [t] p) = P (target t) p" 
+  shows "validfinpath M s p s' \<and> validpath M s' p' \<Longrightarrow> P s (extendfinpath p p') =  P s' p'"
+  apply (induct p arbitrary: s)
+  apply simp
+proof-
+  fix t p s
+  assume IH: "(\<And>s. validfinpath M s p s' \<and> validpath M s' p' \<Longrightarrow> P s (extendfinpath p p') = P s' p')"
+  have "extendfinpath (t # p) p' = extendfinpath ([t] @ p) p'" by simp
+  moreover have "... = extendfinpath [t] (extendfinpath p p')" using extendfinpath_extendfinpath by metis
+  moreover assume "validfinpath M s (t # p) s' \<and> validpath M s' p'"
+  ultimately show "P s (extendfinpath (t # p) p') = P s' p'" using IH assms validfinpath.simps(2) validpathsplit by metis
+qed
+
+lemma P_extendpath_notvalid:
+  assumes "\<And>s t p. P s (extendfinpath [t] p) = P (target t) p" 
+  shows "P s (extendfinpath p p') = P (laststate s p) p'"
+  apply (induct p arbitrary: s)
+  apply simp
+proof-
+  fix t p s
+  assume IH: "(\<And>s. P s (extendfinpath p p') = P (laststate s p) p')"
+  have "extendfinpath (t # p) p' = extendfinpath ([t] @ p) p'" by simp
+  moreover have "... = extendfinpath [t] (extendfinpath p p')" using extendfinpath_extendfinpath by metis
+  moreover have "laststate s (t # p) = laststate (target t) p" by (simp only: laststatetarget)
+  ultimately show "P s (extendfinpath (t # p) p') = P (laststate s (t # p)) p'" using IH assms by metis
+qed
 
 text \<open>Continuing example of syntaxsemantics, giving a valid infinite path (from initial state)
   that satisfies \<open>B\<close>-WFA if and only if action \<open>\<b>\<close> is in \<open>B\<close>.\<close>
@@ -611,255 +836,378 @@ lemma example_inf_path : "validinfpath example_lts s\<^sub>0 (\<lambda>n. (s\<^s
 lemma example_WFA : "WFA example_lts B s\<^sub>0 (inf (\<lambda>n. (s\<^sub>0, \<c>, s\<^sub>0))) = (\<b> \<in> B)"
   by (auto simp: WFA_def perpetuallyenabled_alternative allsuffixes_def example_lts_def)
 
-lemma example_inf_path' : "validinfpath example_lts s\<^sub>0 ([(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)]\<^sup>\<omega>)"
+lemma example_inf_path' : "validinfpath example_lts s\<^sub>2 ([(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)]\<^sup>\<omega>)"
   apply (auto simp: validinfpath_def example_lts_def)
 proof-
   fix n
-  assume "[(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (n mod Suc (Suc 0)) \<noteq> (s\<^sub>0, \<b>, s\<^sub>1)"
+  assume "[(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (n mod Suc (Suc 0)) \<noteq> (s\<^sub>2, \<b>, s\<^sub>1)"
   hence "n mod 2 \<noteq> 0" using nth_Cons_0 numeral_2_eq_2 by metis
   hence "n mod 2 = 1" by simp
-  thus "[(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (n mod Suc (Suc 0)) = (s\<^sub>1, \<a>, s\<^sub>0)" by (simp add: numeral_2_eq_2)
+  thus "[(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (n mod Suc (Suc 0)) = (s\<^sub>1, \<c>, s\<^sub>2)" by (simp add: numeral_2_eq_2)
 next
   fix n :: "nat"
   have "(n mod 2 = 0) \<or> (n mod 2 = 1)" by auto
-  thus "target ([(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (n mod Suc (Suc 0))) = source ([(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (Suc n mod Suc (Suc 0)))" by (auto simp: numeral_2_eq_2 mod_Suc)
+  thus "target ([(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (n mod Suc (Suc 0))) = source ([(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (Suc n mod Suc (Suc 0)))" by (auto simp: numeral_2_eq_2 mod_Suc)
 qed
 
-(*lot of repetition due to lack of mod simplification rules*)
-lemma example_WFA' : "WFA example_lts B s\<^sub>0 (inf [(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)]\<^sup>\<omega>)"
+(*contains lots of repetition due to lack of mod simplification rules*)
+lemma example_WFA' : "WFA example_lts B s\<^sub>2 (inf [(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)]\<^sup>\<omega>)"
   apply (auto simp: WFA_def allsuffixes_def example_lts_def perpetuallyenabled_def)
 proof-
-  assume "\<forall>s. target ([(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (s mod Suc (Suc 0))) = s\<^sub>0"
-  hence False: "target ([(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (0 mod Suc (Suc 0))) = s\<^sub>0" by blast
-  thus "\<c> \<in> action ` range (\<lambda>x. [(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (x mod Suc (Suc 0)))" by simp
-  show "\<b> \<in> action ` range (\<lambda>x. [(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (x mod Suc (Suc 0)))" using False by simp
-next
-  fix i 
-  assume "\<forall>s. target ([(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (Suc (i + s) mod Suc (Suc 0))) = s\<^sub>0"
-  hence "target ([(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (Suc (i + Suc i) mod Suc (Suc 0))) = s\<^sub>0" by blast
-  moreover have "Suc (i + Suc i) mod Suc (Suc 0) = 0" by presburger
-  ultimately have False: "target ([(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (0 mod Suc (Suc 0))) = s\<^sub>0" by simp
-  thus "\<c> \<in> action ` range (\<lambda>x. [(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (Suc (i + x) mod Suc (Suc 0)))" by simp
-  show "\<b> \<in> action ` range (\<lambda>x. [(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (Suc (i + x) mod Suc (Suc 0)))" using False by simp
+  have "\<b> = action ([(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (0 mod Suc (Suc 0)))" by simp
+  thus "\<b> \<in> action ` range (\<lambda>x. [(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (x mod Suc (Suc 0)))" by blast
+  fix i
+  have "\<exists>x. Suc (i + x) mod Suc (Suc 0) = Suc 0" by presburger
+  then obtain x where "Suc (i + x) mod Suc (Suc 0) = Suc 0" by auto
+  hence "\<c> = action ([(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (Suc (i + x) mod Suc (Suc 0)))" by simp
+  thus "\<c> \<in> action ` range (\<lambda>x. [(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (Suc (i + x) mod Suc (Suc 0)))" by blast
+  thus "\<c> \<in> action ` range (\<lambda>x. [(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (Suc (i + x) mod Suc (Suc 0)))" by assumption
+  have "\<exists>x. Suc (i + x) mod Suc (Suc 0) = 0" by presburger
+  then obtain x where "Suc (i + x) mod Suc (Suc 0) = 0" by metis
+  hence "\<b> = action ([(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (Suc (i + x) mod Suc (Suc 0)))" by simp
+  thus "\<b> \<in> action ` range (\<lambda>x. [(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (Suc (i + x) mod Suc (Suc 0)))" by blast
+  thus "\<b> \<in> action ` range (\<lambda>x. [(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (Suc (i + x) mod Suc (Suc 0)))" by assumption
+  thus "\<b> \<in> action ` range (\<lambda>x. [(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (Suc (i + x) mod Suc (Suc 0)))" by assumption
 next
   fix i
-  assume "\<forall>s. \<exists>s'. target ([(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (Suc (i + s) mod Suc (Suc 0))) = s\<^sub>1 \<and> s' = s\<^sub>0 \<or> target ([(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (Suc (i + s) mod Suc (Suc 0))) = s\<^sub>1 \<and> s' = s\<^sub>1"
-  hence "\<exists>s'. target ([(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (Suc (i + i) mod Suc (Suc 0))) = s\<^sub>1 \<and> s' = s\<^sub>0 \<or> target ([(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (Suc (i + i) mod Suc (Suc 0))) = s\<^sub>1 \<and> s' = s\<^sub>1" by blast  
-  moreover have "Suc (i + i) mod Suc (Suc 0) = 1" by presburger
-  ultimately have False: "\<exists>s'. s\<^sub>0 = s\<^sub>1 \<and> s' = s\<^sub>0 \<or> s\<^sub>0 = s\<^sub>1 \<and> s' = s\<^sub>1" by simp
-  thus "target ([(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (i mod Suc (Suc 0))) = s\<^sub>1 \<Longrightarrow> \<a> \<in> action ` range (\<lambda>x. [(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (Suc (i + x) mod Suc (Suc 0)))" by simp
-  show "\<a> \<in> action ` range (\<lambda>x. [(s\<^sub>0, \<b>, s\<^sub>1), (s\<^sub>1, \<a>, s\<^sub>0)] ! (Suc (i + x) mod Suc (Suc 0)))" using False by simp
+  have "\<exists>x. Suc (i + x) mod Suc (Suc 0) = Suc 0" by presburger
+  then obtain x where "Suc (i + x) mod Suc (Suc 0) = Suc 0" by blast
+  moreover assume "\<forall>x. \<exists>s'. target ([(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (Suc (i + x) mod Suc (Suc 0))) = s\<^sub>1 \<and> s' = s\<^sub>0 \<or> target ([(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (Suc (i + x) mod Suc (Suc 0))) = s\<^sub>1 \<and> s' = s\<^sub>1"
+  ultimately have "target ([(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! Suc 0) = s\<^sub>1" by metis
+  thus "\<a> \<in> action ` range (\<lambda>x. [(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (Suc (i + x) mod Suc (Suc 0)))" by simp
+  thus "\<a> \<in> action ` range (\<lambda>x. [(s\<^sub>2, \<b>, s\<^sub>1), (s\<^sub>1, \<c>, s\<^sub>2)] ! (Suc (i + x) mod Suc (Suc 0)))" by assumption
 qed
-
-lemma occurringstatessubpath : "laststate' s p = s' \<Longrightarrow> alloccurringstates s' p' \<subseteq> alloccurringstates s (extendfinpath p p')"
-  by (cases p'; induct p arbitrary: s; auto)
-
-lemma occurringactionssubpath : "alloccurringactions p' \<subseteq> alloccurringactions (extendfinpath p p')"
-  by (cases p'; induct p; auto)
-
-lemma enabledactionssubset : "B \<subseteq> A \<Longrightarrow> enabledactionsset M A \<subseteq> enabledactionsset M B"
-  by (auto simp: enabledactionsset_def)
-
-lemma enabledactionsset_subpath: "laststate' s p = s' \<Longrightarrow> enabledactionsset M (alloccurringstates s (extendfinpath p p')) \<subseteq> enabledactionsset M (alloccurringstates s' p')"
-  using occurringstatessubpath enabledactionssubset by meson
-
-lemma reachableactionsset_subpath: "laststate' s p = s' \<Longrightarrow> reachableactionsset M B (alloccurringstates s (extendfinpath p p')) \<subseteq> reachableactionsset M B (alloccurringstates s' p')"
-  using occurringstatessubpath reachableactionssubset by meson
-
-lemma WFA_subpath [simp] : "WFA M B (source t) (extendfinpath [t] p) = WFA M B (target t) p"
-proof-
-  have "laststate' (source t) [t] = target t" by simp
-  hence "enabledactionsset M (alloccurringstates (source t) (extendfinpath [t] p)) \<subseteq> enabledactionsset M (alloccurringstates (target t) p)" using enabledactionsset_subpath by metis
-  hence "allsuffixes (target t) p (\<lambda>s p. enabledactionsset M (alloccurringstates s p) \<inter> - B \<subseteq> alloccurringactions p) \<Longrightarrow>
-    enabledactionsset M (alloccurringstates (source t) (extendfinpath [t] p)) \<inter> - B \<subseteq> alloccurringactions p" by (auto simp: allsuffixes_def)
-  hence "allsuffixes (target t) p (\<lambda>s p. enabledactionsset M (alloccurringstates s p) \<inter> - B \<subseteq> alloccurringactions p) \<Longrightarrow>
-    enabledactionsset M (alloccurringstates (source t) (extendfinpath [t] p)) \<inter> - B \<subseteq> alloccurringactions (extendfinpath [t] p)" using occurringactionssubpath by fastforce
-  thus ?thesis by (auto simp: WFA_def perpetuallyenabled_alternative)
-qed
-
-lemma WFA_extendpath: "validfinpath M s p s' \<Longrightarrow> WFA M B s' p' = WFA M B s (extendfinpath p p')"
-  by (rule P_extendpath; simp)
-
-lemma WFAempty : "WFA M B s (fin []) = locked M B s" 
-  by (auto simp: WFA_def locked_def perpetuallyenabled_alternative)
-
-lemma WFAinvarfin : "validfinpath M s p s' \<Longrightarrow>  WFA M B s (fin p) = locked M B s'"
-proof-
-  have "WFA M B s (fin p) =  WFA M B s (extendfinpath p (fin []))" by simp
-  moreover assume "validfinpath M s p s'"
-  ultimately show "WFA M B s (fin p) = locked M B s'" using WFA_extendpath WFAempty by metis
-qed
-
-lemma WFAinvarinf : "validinfpath M s p \<Longrightarrow> WFA M B s (inf p) = (\<forall>a\<in>- B. \<forall>i. source (p i) \<in> \<lbrakk>shiftdown (diamond a tt) 0\<rbrakk> M e \<longrightarrow> occurs {a} (inf (suffix i p)) \<or> occursstate (\<lbrakk>shiftdown (box a ff) 0\<rbrakk> M e) (source (p i)) (inf (suffix i p)))"
-  by (simp add: WFA_def allsuffixes_validinfpath enabledactionsset_def perpetuallyenabled_alternative; blast)
-
-abbreviation irreflexive :: "('a \<Rightarrow> 'a \<Rightarrow> bool) \<Rightarrow> bool" where 
-"irreflexive A \<equiv> (\<forall>a. \<not> A a a)"
-
-abbreviation preimagerelation :: "('a \<Rightarrow> 'a \<Rightarrow> bool) \<Rightarrow> 'a set \<Rightarrow> 'a set" where 
-"preimagerelation A A' \<equiv> {a. \<forall>a' \<in> A'. A a a'}"
-
-definition concurrency :: "('a, 's) lts \<Rightarrow> ('a \<Rightarrow> 'a \<Rightarrow> bool) \<Rightarrow> bool" where
-"concurrency M con = (irreflexive con \<and> (\<forall>p s s'. validfinpath M s p s' \<longrightarrow> (enabledactions M s \<inter> preimagerelation con (alloccurringactions (fin p)) \<subseteq> enabledactions M s')))"
-
-definition JA :: "('a, 's) lts \<Rightarrow> ('a \<Rightarrow> 'a \<Rightarrow> bool) \<Rightarrow> 'a set \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
-"JA M con B s p = allsuffixes s p (\<lambda>s p. (\<forall>a \<in> enabledactions M s \<inter> -B. (\<exists>a'. \<not>con a a' \<and> a' \<in> alloccurringactions p)))"
-
-lemma JA_subpath [simp] : 
-  assumes "enabledactions M (source t) \<inter> preimagerelation con (alloccurringactions (fin [t])) \<subseteq> enabledactions M (target t)" 
-  shows "JA M con B (source t) (extendfinpath [t] p) = JA M con B (target t) p"
-proof-
-  {
-    fix a
-    assume "allsuffixes (target t) p (\<lambda>s p. (\<forall>a \<in> enabledactions M s \<inter> -B. (\<exists>a'. \<not>con a a' \<and> a' \<in> alloccurringactions p)))"
-    hence assum1: "\<forall>a \<in> enabledactions M (target t) \<inter> -B. (\<exists>a'. \<not>con a a' \<and> a' \<in> alloccurringactions p)" by (simp add: allsuffixes_def)
-    assume assum2: "a \<in> enabledactions M (source t) \<inter> -B"
-    have "\<not>con a (action t) \<or> con a (action t)" by auto
-    moreover have "\<not>con a (action t) \<Longrightarrow> (\<exists>a'. \<not>con a a' \<and> a' \<in> alloccurringactions (extendfinpath [t] p))" by (cases p; auto)
-    moreover {
-      assume "con a (action t)"
-      hence "a \<in> enabledactions M (source t) \<inter> preimagerelation con (alloccurringactions (fin [t]))" using assum2 by simp
-      hence "\<exists>a'. \<not>con a a' \<and> a' \<in> alloccurringactions p" using assms assum1 assum2 by blast
-      hence "\<exists>a'. \<not>con a a' \<and> a' \<in> alloccurringactions (extendfinpath [t] p)" using occurringactionssubpath by fastforce
-    }
-    ultimately have "\<exists>a'. \<not>con a a' \<and> a' \<in> alloccurringactions (extendfinpath [t] p)" by blast
-  }
-  thus ?thesis by (auto simp: JA_def)
-qed
-
-lemma JA_extendpath: "validfinpath M s p s' \<and> concurrency M con \<Longrightarrow> JA M con B s' p' = JA M con B s (extendfinpath p p')"
-  apply (rule P_extendpath[where ?P="JA M con B" and ?M=M]; simp?)
-  apply (rule JA_subpath; subgoal_tac "validfinpath M (source t) [t] (target t)")
-  unfolding concurrency_def apply blast
-  apply simp
-  done
-
-lemma JAempty : "JA M con B s (fin []) = locked M B s" 
-  by (auto simp: JA_def locked_def)
-
-lemma JAinvarfin : "validfinpath M s p s' \<and> concurrency M con \<Longrightarrow>  JA M con B s (fin p) = locked M B s'"
-proof-
-  have "JA M con B s (fin p) =  JA M con B s (extendfinpath p (fin []))" by simp
-  moreover assume "validfinpath M s p s' \<and> concurrency M con"
-  ultimately show ?thesis using JA_extendpath JAempty by metis
-qed
-
-lemma JAinvarinf : 
-  "validinfpath M s p \<Longrightarrow> JA M con B s (inf p) = (\<forall>a\<in>- B. \<forall>i. source (p i) \<in> \<lbrakk>shiftdown (diamond a tt) 0\<rbrakk> M e \<longrightarrow> occurs {a'. \<not> con a a'} (inf (suffix i p)) \<or> occursstate (\<lbrakk>shiftdown ff 0\<rbrakk> M e) (source (p i)) (inf (suffix i p)))"
-  by (simp add: JA_def allsuffixes_validinfpath; blast)
-
-definition WHFA :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
-"WHFA M B s p = allsuffixes s p (\<lambda>s p. perpetuallyreachable M B s p \<inter> -B \<subseteq> alloccurringactions p)"
-
-lemma WHFA_subpath [simp] : "WHFA M B (source t) (extendfinpath [t] p) = WHFA M B (target t) p"
-proof-
-  have "laststate' (source t) [t] = target t" by simp
-  hence "reachableactionsset M B (alloccurringstates (source t) (extendfinpath [t] p)) \<subseteq> reachableactionsset M B (alloccurringstates (target t) p)" by (simp add: reachableactionsset_subpath)
-  hence "allsuffixes (target t) p (\<lambda>s p. reachableactionsset M B (alloccurringstates s p) \<inter> - B \<subseteq> alloccurringactions p) \<Longrightarrow>
-    reachableactionsset M B (alloccurringstates (source t) (extendfinpath [t] p)) \<inter> - B \<subseteq> alloccurringactions p" by (auto simp: allsuffixes_def)
-  hence "allsuffixes (target t) p (\<lambda>s p. perpetuallyreachable M B s p \<inter> - B \<subseteq> alloccurringactions p) \<Longrightarrow>
-    perpetuallyreachable M B (source t) (extendfinpath [t] p) \<inter> - B \<subseteq> alloccurringactions p" by (simp add: perpetuallyreachable_def reachableactionsset_def reachableactions_def)
-  hence "allsuffixes (target t) p (\<lambda>s p. perpetuallyreachable M B s p \<inter> -B \<subseteq> alloccurringactions p) \<Longrightarrow>
-    perpetuallyreachable M B (source t) (extendfinpath [t] p) \<inter> - B \<subseteq> alloccurringactions (extendfinpath [t] p)" using occurringactionssubpath by fastforce
-  thus ?thesis by (auto simp: WHFA_def)                                                                                       
-qed
-
-lemma WHFA_extendpath: "validfinpath M s p s' \<Longrightarrow> WHFA M B s' p' = WHFA M B s (extendfinpath p p')"
-  by (rule P_extendpath; simp)
-
-lemma perpetuallyreachable_alternative : "perpetuallyreachable M B s p = reachableactionsset M B (alloccurringstates s p)"
- by (simp add: perpetuallyreachable_def reachableactionsset_def reachableactions_def)
 
 lemma WHFAempty : "WHFA M B s (fin []) = locked M B s" 
-  apply (auto simp: WHFA_def locked_def perpetuallyreachable_alternative)
+  apply (auto simp: WHFA_def locked_def perpetuallyreachable_def)
 proof-
   fix a s'
-  assume assum1: "reachableactionsset M B {s} \<inter> - B = {}"
+  assume assum1: "reachableactions M B s \<subseteq> B"
   assume "(s, a, s') \<in> transition M"
-  hence "validfinpath M s [] s \<and> \<not> occurs B (fin []) \<and> (s, a, s') \<in> transition M" by simp
-  hence "a \<in> reachableactionsset M B {s}" unfolding reachableactionsset_def enabledactions_def by blast
+  hence "validfinpath M s [] s \<and> \<not>occurs B (fin []) \<and> (s, a, s') \<in> transition M" by simp
+  hence "a \<in> reachableactions M B s" unfolding reachableactions_def reachableactionsset_def enabledactions_def by blast
   thus "a \<in> B" using assum1 by auto
 next
   fix a
   assume assum1: "{a. \<exists>s'. (s, a, s') \<in> transition M} \<subseteq> B"
-  assume "a \<in> reachableactionsset M B {s}" 
-  then obtain p s' where "validfinpath M s p s' \<and> \<not> occurs B (fin p) \<and> a \<in> enabledactions M s'" by (auto simp: reachableactionsset_def)
+  assume "a \<in> reachableactions M B s" 
+  then obtain p s' where "validfinpath M s p s' \<and> \<not>occurs B (fin p) \<and> a \<in> enabledactions M s'" by (auto simp: reachableactions_def reachableactionsset_def)
   hence "\<exists>s'. (s, a, s') \<in> transition M" 
     apply (induct p)
     apply simp
     using assum1 apply (subgoal_tac "(s, action aa, target aa) \<in> transition M \<and> action aa \<in> -B"; (blast|auto))
     done
-  hence "a \<in> B" using assum1 by blast
-  thus "a \<notin> B \<Longrightarrow> False" by simp
+  thus "a \<in> B" using assum1 by blast
 qed
 
-lemma WHFAinvarfin : "validfinpath M s p s' \<Longrightarrow>  WHFA M B s (fin p) = locked M B s'"
-proof-
-  have "WHFA M B s (fin p) =  WHFA M B s (extendfinpath p (fin []))" by simp
-  moreover assume "validfinpath M s p s'"
-  ultimately show "WHFA M B s (fin p) = locked M B s'" using WHFA_extendpath WHFAempty by metis
-qed
+text \<open>Simplification rules for generalization of SFA and SHFA.\<close>
 
-lemma WHFAinvarinf : 
-  assumes "finite (-B)"
-  shows "validinfpath M s p \<Longrightarrow> WHFA M B s (inf p) = (\<forall>a\<in>-B. \<forall>i. source (p i) \<in> \<lbrakk>shiftdown (Diamond (Star (Acts (-B))) (diamond a tt)) 0\<rbrakk> M e \<longrightarrow> occurs {a} (inf (suffix i p)) \<or> occursstate (\<lbrakk>shiftdown (Box (Star (Acts (-B))) (box a ff)) 0\<rbrakk> M e) (source (p i)) (inf (suffix i p)))"
-  apply (simp only: shiftdownDiamond shiftdownBox shiftdown.simps)
-proof-
-  have "validinfpath M s p \<Longrightarrow> WHFA M B s (inf p) = (\<forall>a \<in> -B. \<forall> i. a \<in> reachableactions M B (source (p i)) \<longrightarrow> occurs {a} (inf (suffix i p)) \<or> occursstate {s. a \<notin> reachableactions M B s} (source (p i)) (inf (suffix i p)))" by (simp add: WHFA_def allsuffixes_validinfpath perpetuallyreachable_def; blast)
-  moreover {
-    have "\<And>a. {s. a \<notin> reachableactions M B s} = {s. s \<in> \<lbrakk>Box (Star (Acts (-B))) (box a ff)\<rbrakk> M e}" using assms by (simp only: Boxnotreachable)
-    moreover have "\<And>a. {s. s \<in> \<lbrakk>Box (Star (Acts (-B))) (box a ff)\<rbrakk> M e} = \<lbrakk>Box (Star (Acts (-B))) (box a ff)\<rbrakk> M e" by blast
-    ultimately have "\<And>a. {s. a \<notin> reachableactions M B s} = \<lbrakk>Box (Star (Acts (-B))) (box a ff)\<rbrakk> M e" by simp
-  }
-  ultimately show "validinfpath M s p \<Longrightarrow> WHFA M B s (inf p) = (\<forall>a\<in>-B. \<forall>i. (source (p i) \<in> \<lbrakk>Diamond (Star (Acts (-B))) (diamond a tt)\<rbrakk> M e) \<longrightarrow> occurs {a} (inf (suffix i p)) \<or> occursstate (\<lbrakk>Box (Star (Acts (-B))) (box a ff)\<rbrakk> M e) (source (p i)) (inf (suffix i p)))" using assms by (simp only: Diamondreachable)
-qed
-
-definition SFA :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 's \<Rightarrow> ('a, 's) path \<Rightarrow> bool" where
-"SFA M B s p = allsuffixes s p (\<lambda>s p. relentlesslyenabled M s p \<inter> -B \<subseteq> alloccurringactions p)"
-
-lemma SFA_WFA : "SFA M B s p \<Longrightarrow> WFA M B s p"
-  unfolding SFA_def WFA_def allsuffixes_def
-  using perpetuallyenabled_relentlesslyenabled by fastforce
-
-lemma relentlesslyenabled_subpath : "relentlesslyenabled M (source t) (extendfinpath [t] p) \<subseteq> relentlesslyenabled M (target t) p"
+lemma relentlessly_pred_sub: 
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  shows "A s (extendfinpath [t] p) \<subseteq> A (target t) p"
 proof
   fix a
-  assume "a \<in> relentlesslyenabled M (source t) (extendfinpath [t] p)"
-  hence "allsuffixes (source t) (extendfinpath [t] p) (\<lambda>s p. \<exists>s\<in>alloccurringstates s p. a \<in> enabledactions M s)" by (simp add: relentlesslyenabled_def)
-  hence "allsuffixes (target t) p (\<lambda>s p. \<exists>s\<in>alloccurringstates s p. a \<in> enabledactions M s)" by simp
-  thus "a \<in> relentlesslyenabled M (target t) p" by (simp add: relentlesslyenabled_def)
+  assume "a \<in> A s (extendfinpath [t] p)"
+  hence "allsuffixes s (extendfinpath [t] p) (\<lambda>s p. \<exists>s\<in>alloccurringstates s p. Q a s)" using assms by simp
+  hence "allsuffixes (target t) p (\<lambda>s p. \<exists>s\<in>alloccurringstates s p. Q a s)" by auto
+  thus "a \<in> A (target t) p" using assms by simp
 qed
 
-lemma SFA_subpath [simp] : "SFA M B (source t) (extendfinpath [t] p) = SFA M B (target t) p"
-  apply (auto simp: SFA_def)
+lemma relentlessly_pred_super: 
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  shows "A (target t) p \<subseteq> A s (extendfinpath [t] p)"
+proof
+  fix a
+  assume "a \<in> A (target t) p"
+  hence "allsuffixes (target t) p (\<lambda>s p. \<exists>s'\<in>alloccurringstates s p. Q a s')" using assms by simp
+  moreover {
+    from this obtain s' where "s' \<in> alloccurringstates (target t) p \<and> Q a s'" by (auto simp: allsuffixes_def)
+    hence "\<exists>s'\<in>alloccurringstates s (extendfinpath [t] p). Q a s'" using alloccurringstatesright laststatesimps(1) in_mono by metis
+  }
+  ultimately have "allsuffixes s (extendfinpath [t] p) (\<lambda>s p. \<exists>s'\<in>alloccurringstates s p. Q a s')" by simp
+  thus "a \<in> A s (extendfinpath [t] p)" using assms by simp
+qed
+
+lemma relentlessly_pred: 
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  shows "A s (extendfinpath [t] p) = A (target t) p "
+  apply (rule subset_antisym)
+  apply (rule relentlessly_pred_sub; simp add: assms)
+  apply (rule relentlessly_pred_super; simp add: assms)
+  done
+
+lemma relentlessly_extendpath_pred: 
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  shows "validfinpath M s p s' \<Longrightarrow> A s (extendfinpath p p') = A s' p'"
+proof-
+  have "A s (extendfinpath p p') = A (laststate s p) p'" by (rule P_extendpath_notvalid [where ?P="A"]; (rule relentlessly_pred)?; simp add: assms)
+  thus "validfinpath M s p s' \<Longrightarrow> A s (extendfinpath p p') = A s' p'" by (simp add: validfinpathlaststate) 
+qed
+
+lemma relentlessly_firststate :
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  shows  "A s (inf p) = A s' (inf p)"
+proof-
+  have "A s (inf p) = A s (extendfinpath [p 0] (inf (suffix (Suc 0) p)))" by simp
+  moreover have "... = A (target (p 0)) (inf (suffix (Suc 0) p))" by (rule relentlessly_pred; simp add: assms)
+  moreover have "A s' (extendfinpath [p 0] (inf (suffix (Suc 0) p))) = A (target (p 0)) (inf (suffix (Suc 0) p))" by (rule relentlessly_pred; simp add: assms)
+  ultimately show ?thesis by simp
+qed
+
+lemma relentlessly_infextendpath: 
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  shows "A s (inf (conc p p')) = A s' (inf p')"
+  apply (induct p)
+  apply (simp; rule relentlessly_firststate[where ?s=s]; simp add: assms)
+proof-
+  fix t :: "'a \<times> 'b \<times> 'a"
+  fix p
+  assume "A s (inf (conc p p')) = A s' (inf p')"
+  moreover have "A s (inf (conc p p')) = A (target t) (inf (conc p p'))" by (rule relentlessly_firststate[where ?s=s]; simp add: assms)
+  moreover have "A s (extendfinpath [t] (inf (conc p p'))) = A (target t) (inf (conc p p'))" by (rule relentlessly_pred; simp add: assms)
+  ultimately show "A s (inf (conc (t # p) p')) = A s' (inf p')" by simp
+qed
+
+lemma relentlessly_subpath :
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  and "P = (\<lambda>s p. allsuffixes s p (\<lambda>s p. A s p -B \<subseteq> alloccurringactions p))"
+  shows "P s (extendfinpath [t] p) = P (target t) p"
+  apply (auto simp: assms(2))
 proof-
   fix a
-  assume assum1: "allsuffixes (target t) p (\<lambda>s p. relentlesslyenabled M s p \<inter> - B \<subseteq> alloccurringactions p)"
-  assume "a \<in> relentlesslyenabled M (source t) (extendfinpath [t] p)"
-  hence "a \<in> relentlesslyenabled M (target t) p" using relentlesslyenabled_subpath subset_iff by meson
+  assume assum1: "allsuffixes (target t) p (\<lambda>s p. A s p -B\<subseteq> alloccurringactions p)"
+  assume "a \<in> A s (extendfinpath [t] p)"
   moreover assume "a \<notin> B"
-  ultimately have "a \<in> alloccurringactions p" using assum1 by (auto simp: allsuffixes_def)
+  moreover have "A s (extendfinpath [t] p) = A (target t) p" by (rule relentlessly_pred; simp add: assms)
+  ultimately have "a \<in> A (target t) p -B" by simp
+  hence "a \<in> alloccurringactions p" using assum1 by (auto simp: allsuffixes_def)
   thus "a \<in> alloccurringactions (extendfinpath [t] p)" using occurringactionssubpath subset_iff by meson
 qed
 
-lemma SFA_extendpath: "validfinpath M s p s' \<Longrightarrow> SFA M B s' p' = SFA M B s (extendfinpath p p')"
-  by (rule P_extendpath; simp)
-
-lemma SFAempty : "SFA M B s (fin []) = locked M B s" 
-  by (auto simp: SFA_def locked_def relentlesslyenabled_def)
-
-lemma SFAinvarfin : "validfinpath M s p s' \<Longrightarrow>  SFA M B s (fin p) = locked M B s'"
+lemma relentlessly_extendpath: 
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  and "P = (\<lambda>s p. allsuffixes s p (\<lambda>s p. A s p -B \<subseteq> alloccurringactions p))"
+  shows "P (laststate s p) p' = P s (extendfinpath p p')"
 proof-
-  have "SFA M B s (fin p) =  SFA M B s (extendfinpath p (fin []))" by simp
-  moreover assume "validfinpath M s p s'"
-  ultimately show "SFA M B s (fin p) = locked M B s'" using SFA_extendpath SFAempty by metis
+  have "P s (extendfinpath p p') = P (laststate s p) p'" by (rule P_extendpath_notvalid; rule relentlessly_subpath; simp add: assms)
+  thus ?thesis by simp
+qed
+
+lemma relentlessly_extendpath_valid:
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  and "P = (\<lambda>s p. allsuffixes s p (\<lambda>s p. A s p -B \<subseteq> alloccurringactions p))"
+  shows "validfinpath M s p s' \<Longrightarrow> P s' p' = P s (extendfinpath p p')"
+proof-
+  have "P s (extendfinpath p p') = P (laststate s p) p'" by (rule P_extendpath_notvalid[of P], rule relentlessly_subpath[OF assms])
+  thus "validfinpath M s p s' \<Longrightarrow> P s' p' = P s (extendfinpath p p')" by (simp add: validfinpathlaststate)
+qed
+
+lemma relentlessly_extendpath_inf:
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  and "P = (\<lambda>s p. allsuffixes s p (\<lambda>s p. A s p -B \<subseteq> alloccurringactions p))"
+  shows "validfinpath M s p s' \<Longrightarrow> P s' (inf p') = P s (inf (conc p p'))"
+  by (subst relentlessly_extendpath_valid[OF assms]; simp)
+
+lemma relentlessly_infpathsuffix:
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  and "P = (\<lambda>s p. allsuffixes s p (\<lambda>s p. A s p -B \<subseteq> alloccurringactions p))"
+  shows "validinfpath M s p \<Longrightarrow> P s (inf p) = P (source (p n)) (inf (suffix n p))"
+proof-
+  assume "validinfpath M s p"
+  hence "validfinpath M s (prefix n p) (source (p n)) \<and> inf p = extendfinpath (prefix n p) (inf (suffix n p))" by simp
+  moreover have "P (laststate s (prefix n p)) (inf (suffix n p)) = P s (extendfinpath (prefix n p) (inf (suffix n p)))" by (rule relentlessly_extendpath; simp add: assms)
+  ultimately show "P s (inf p) = P (source (p n)) (inf (suffix n p))" using validfinpathlaststate by metis
+qed
+
+lemma lockednotreachable : "locked M B s \<Longrightarrow> \<forall>a\<in>-B. a \<notin> reachableactions M B s"
+  apply rule+
+proof-
+  fix a
+  assume locked: "locked M B s"
+  assume Bcomp: "a \<in> -B"
+  assume "a \<in> reachableactions M B s"
+  then obtain p s' where validpath: "validfinpath M s p s' \<and> \<not>occurs B (fin p) \<and> a \<in> enabledactions M s'" by (auto simp: reachableactions_def reachableactionsset_def)
+  {
+    assume "p = []"
+    hence "a \<in> enabledactions M s" using validpath by auto
+    hence False using locked Bcomp unfolding locked_def by blast
+  }
+  moreover {
+    fix t p'
+    assume "p = t # p'"
+    hence "(source t, action t, target t) \<in> transition M \<and> action t \<notin> B \<and> locked M B (source t)" using validpath locked by auto
+    moreover from this have "\<exists>s'. (source t, action t, s') \<in> transition M" by blast
+    ultimately have "False" unfolding locked_def enabledactions_def by auto
+  }
+  ultimately show False by (cases p)
+qed
+
+lemma notreachable_locked: "(\<forall>a\<in>-B. a \<notin> reachableactions M B s) \<Longrightarrow> locked M B s"
+  unfolding locked_def apply (rule subsetI ballI)
+proof-
+  fix a
+  assume assum1: "\<forall>a\<in>-B. a \<notin> reachableactions M B s"
+  assume "a \<in> enabledactions M s"
+  hence "a \<in> reachableactions M B s" using enabled_reachable subset_iff by metis
+  thus "a \<in> B" using assum1 by auto
+qed
+
+lemma lockednotQ: 
+  assumes "\<And>s a. a \<in> -B \<and> Q a s \<Longrightarrow> a \<in> reachableactions M B s"
+  shows "a \<in> -B \<and> locked M B s \<Longrightarrow> \<not>Q a s" 
+proof-
+  fix a s
+  assume "a \<in> -B \<and> locked M B s"
+  hence "a \<in> -B \<and> a \<notin> reachableactions M B s" by (simp add: lockednotreachable)
+  thus "\<not>Q a s" using assms by auto
+qed
+
+lemma relentlesslyinvarfin : 
+  assumes "\<And>s a. a \<in> -B \<and> Q a s \<Longrightarrow> a \<in> reachableactions M B s" 
+  and "\<And>s. (\<forall>a \<in> -B. \<not>Q a s) \<Longrightarrow> locked M B s"
+  and "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  and "P = (\<lambda>s p. allsuffixes s p (\<lambda>s p. A s p -B \<subseteq> alloccurringactions p))"
+  shows "P s (fin []) = locked M B s"
+  unfolding assms(3) assms(4) apply simp
+proof-
+  have "\<And>s. (\<forall>a \<in> -B. \<not>Q a s) = ({a. Q a s} -B = {})" by auto
+  thus "({a. Q a s} \<subseteq> B) = locked M B s" using lockednotQ[OF assms(1)] assms by auto
+qed
+
+lemma occuringstatessuffix : "alloccurringstates (target (p n)) (inf (suffix (Suc n) p)) \<subseteq> alloccurringstates s (inf p)"
+  by auto
+
+lemma image_subset_inf : "n \<le> m \<Longrightarrow> image f (range (suffix m p)) \<subseteq> image f (range (suffix n p))"
+  unfolding image_def apply auto
+  using le_Suc_ex trans_le_add1 apply metis
+  done
+
+lemma image_subset_fin : "n \<le> m \<Longrightarrow> image f (set (drop m p)) \<subseteq> image f (set (drop n p))"
+  unfolding image_def apply auto
+  using set_drop_subset_set_drop subset_iff apply metis
+  done
+
+lemma occuringstatessuffixsuffix [simp] : "n \<le> m \<and> target (p m) \<in> alloccurringstates (target (p n)) (inf (suffix (Suc n) p)) \<Longrightarrow> alloccurringstates (target (p m)) (inf (suffix (Suc m) p)) \<subseteq> alloccurringstates (target (p n)) (inf (suffix (Suc n) p))"
+proof-
+  assume "n \<le> m \<and> target (p m) \<in> alloccurringstates (target (p n)) (inf (suffix (Suc n) p))" 
+  hence "Suc n \<le> Suc m \<and> target (p m) \<in> insert (target (p n)) (image target (range (suffix (Suc n) p)))" by simp
+  moreover from this have "image target (range (suffix (Suc m) p)) \<subseteq> image target (range (suffix (Suc n) p))" using image_subset_inf by metis
+  ultimately have "insert (target (p m)) (image target (range (suffix (Suc m) p))) \<subseteq> insert (target (p n)) (image target (range (suffix (Suc n) p)))" by auto
+  thus "alloccurringstates (target (p m)) (inf (suffix (Suc m) p)) \<subseteq> alloccurringstates (target (p n)) (inf (suffix (Suc n) p))" by simp
+qed
+
+lemma alloccurrinstatessuffixsuffixvalidinfpath:  "n \<le> m \<and> validinfpath M s p \<Longrightarrow> alloccurringstates (target (p m)) (inf (suffix (Suc m) p)) \<subseteq> alloccurringstates (target (p n)) (inf (suffix (Suc n) p))"
+proof-
+  assume "n \<le> m \<and> validinfpath M s p"
+  hence "(n = m \<and> validinfpath M s p) \<or> n < m" by auto
+  moreover have "n < m \<Longrightarrow> target (p m) \<in> alloccurringstates (target (p n)) (inf (suffix (Suc n) p))"
+    unfolding alloccurringstatesalternative apply auto
+    using less_natE apply metis
+    done
+  ultimately have "n \<le> m \<and> target (p m) \<in> alloccurringstates (target (p n)) (inf (suffix (Suc n) p))" by auto
+  thus "alloccurringstates (target (p m)) (inf (suffix (Suc m) p)) \<subseteq> alloccurringstates (target (p n)) (inf (suffix (Suc n) p))" by (rule occuringstatessuffixsuffix)
+qed
+
+lemma somesuffix_actionrelentlessly :
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  shows "validinfpath M s p \<and> a \<notin> A s (inf p) \<Longrightarrow> (\<exists>n. alloccurringstates (source (p n)) (inf (suffix n p)) \<subseteq> {s. \<not>Q a s})"
+proof-
+  assume assum1: "validinfpath M s p \<and> a \<notin> A s (inf p)"
+  hence "(\<forall>s \<in> alloccurringstates s (inf p). \<not>Q a s) \<or> (\<exists>i. \<forall>s \<in> alloccurringstates (target (p i)) (inf (suffix (Suc i) p)). \<not>Q a s)" unfolding assms allsuffixes_def by simp 
+  moreover {
+    assume "\<forall>s \<in> alloccurringstates s (inf p). \<not>Q a s"
+    hence "alloccurringstates (source (p 0)) (inf (suffix 0 p)) \<subseteq> {s. \<not>Q a s}" using assum1 by (auto simp: validinfpath_def)
+  }
+  moreover {
+    assume "\<exists>i. \<forall>s \<in> alloccurringstates (target (p i)) (inf (suffix (Suc i) p)). \<not>Q a s"
+    hence "\<exists>i. alloccurringstates (source (p (Suc i))) (inf (suffix (Suc i) p)) \<subseteq> {s. \<not>Q a s}" using assum1 by (auto simp: validinfpath_def)
+  }
+  ultimately show "\<exists>n. alloccurringstates (source (p n)) (inf (suffix n p)) \<subseteq> {s. \<not>Q a s}" by blast
+qed
+
+lemma relentlesslreachable_onallsuffixes: "a \<in> relentlesslyreachable M B s p \<Longrightarrow> allsuffixes s p (\<lambda>s p. a \<in> relentlesslyreachable M B s p)"
+  unfolding relentlesslyreachable_def allsuffixes_def
+  apply (cases p; simp)
+  apply (simp add: add.commute less_diff_conv)
+  using add_Suc_right add_Suc_shift apply metis
+  done
+
+lemma relentlessly_onallsuffixes: 
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  shows "a \<in> A s p \<Longrightarrow> allsuffixes s p (\<lambda>s p. a \<in> A s p)"
+  unfolding assms allsuffixes_def
+  apply (cases p; simp)
+  apply (simp add: add.commute less_diff_conv)
+  using add_Suc_right add_Suc_shift apply metis
+  done
+
+lemma somesuffix_onlyrelentlessly :
+  assumes "finite (-B)"
+  and "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  shows "validinfpath M s p \<Longrightarrow> (\<exists>n. allsuffixes (source (p n)) (inf (suffix n p)) (\<lambda>s p. {a. Q a s} -B \<subseteq> A s p))"
+proof-
+  assume assum1: "validinfpath M s p"
+  have "\<exists>n. allsuffixes (source (p n)) (inf (suffix n p)) (\<lambda>s p. {a. Q a s} \<inter> -B \<subseteq> A s p)"
+    apply (rule inductfiniteset[where ?A="-B"])
+    apply (simp add: assms)
+    apply (simp add: allsuffixes_def)
+  proof-
+    fix a A'
+    assume "a \<in> - B - A' \<and> (\<exists>n. allsuffixes (source (p n)) (inf (suffix n p)) (\<lambda>s p. {a. Q a s} \<inter> A' \<subseteq> A s p))"
+    then obtain n where assum2: "a \<in> - B - A' \<and> allsuffixes (source (p n)) (inf (suffix n p)) (\<lambda>s p. {a. Q a s} \<inter> A' \<subseteq> A s p)" by auto
+    have "a \<in> A (source (p n)) (inf (suffix n p)) \<or> a \<notin> A (source (p n)) (inf (suffix n p))" by simp
+    moreover {
+      assume "a \<in> A (source (p n)) (inf (suffix n p))"
+      hence "allsuffixes (source (p n)) (inf (suffix n p)) (\<lambda>s p. a \<in> A s p)" by (rule relentlessly_onallsuffixes[OF assms(2)])
+      hence "allsuffixes (source (p n)) (inf (suffix n p)) (\<lambda>s p. {a. Q a s} \<inter> insert a A' \<subseteq> A s p)" using assum2 unfolding allsuffixes_def by blast
+    }
+    moreover {
+      assume "a \<notin> A (source (p n)) (inf (suffix n p))"
+      moreover have validsubpath: "validinfpath M (source (p n)) (suffix n p)" using assum1 by simp
+      ultimately have "(\<exists>m. alloccurringstates (source ((suffix n p) m)) (inf (suffix m (suffix n p))) \<subseteq> {s. \<not>Q a s})" by (subst somesuffix_actionrelentlessly[OF assms(2)]; blast)
+      then obtain m where anotenabled: "allsuffixes (source (p (n + m))) (inf (suffix (n + m) p)) (\<lambda>s p. \<not>Q a s)" unfolding alloccurringstatesalternative allsuffixes_def by auto
+      have "allsuffixes (source ((suffix n p) m)) (inf (suffix m (suffix n p))) (\<lambda>s p. {a. Q a s} \<inter> A' \<subseteq> A s p)" apply (rule suffixallsuffixesinf) using validsubpath assum2 by blast
+      hence "allsuffixes (source (p (n + m))) (inf (suffix (n + m) p)) (\<lambda>s p. {a. Q a s} \<inter> A' \<subseteq> A s p)" by simp
+      hence "allsuffixes (source (p (n + m))) (inf (suffix (n + m) p)) (\<lambda>s p. {a. Q a s} \<inter> (insert a A') \<subseteq> A s p)" using anotenabled unfolding allsuffixes_def by simp
+      hence "\<exists>n. allsuffixes (source (p n)) (inf (suffix n p)) (\<lambda>s p. {a. Q a s} \<inter> insert a A' \<subseteq> A s p)" by blast
+    }
+    ultimately show "\<exists>n. allsuffixes (source (p n)) (inf (suffix n p)) (\<lambda>s p. {a. Q a s} \<inter> insert a A' \<subseteq> A s p)" by blast
+  qed
+  moreover have "\<And>s. {a. Q a s} \<inter> -B = {a. Q a s} -B" by auto
+  ultimately show ?thesis by auto
+qed
+
+lemma notfaircontradiction :
+  assumes "\<not>allsuffixes s (inf p) (\<lambda>s p. Q s p \<subseteq> alloccurringactions p)"
+  and "Q s (inf p) \<subseteq> Q (target (p 0)) (inf (suffix (Suc 0) p))"
+  shows "\<exists>n a. a \<in> Q (target (p n)) (inf (suffix (Suc n) p)) \<and> a \<notin> alloccurringactions (inf (suffix (Suc n) p))"
+proof-
+  {
+    assume "\<not> Q s (inf p) \<subseteq> alloccurringactions (inf p)"
+    then obtain a where "a \<in> Q s (inf p) \<and> a \<notin> alloccurringactions (inf p)" by auto
+    hence "a \<in> Q (target (p 0)) (inf (suffix (Suc 0) p)) \<and>  a \<notin> alloccurringactions (inf (suffix (Suc 0) p))" using assms by auto
+    hence "\<exists>n a. a \<in> Q (target (p n)) (inf (suffix (Suc n) p)) \<and> a \<notin> alloccurringactions (inf (suffix (Suc n) p))" by blast
+  }
+  thus ?thesis using assms(1) unfolding allsuffixes_def by auto
+qed
+
+lemma P_alternative :
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  and "P = (\<lambda>s p. allsuffixes s p (\<lambda>s p. A s p -B \<subseteq> alloccurringactions p))"
+  and "\<And>n a. a \<in> A (target (p n)) (inf (suffix (Suc n) p)) -B \<Longrightarrow> a \<in> alloccurringactions (inf (suffix (Suc n) p))"
+  shows "P s (inf p)"
+proof-
+  have "A s (extendfinpath [p 0] (inf (suffix (Suc 0) p))) = A (target (p 0)) (inf (suffix (Suc 0) p))" by (rule relentlessly_pred; simp add: assms)
+  hence "A s (inf p) \<subseteq> A (target (p 0)) (inf (suffix (Suc 0) p))" by simp
+  hence "\<not>P s (inf p) \<Longrightarrow> \<exists>n a. a \<in> A (target (p n)) (inf (suffix (Suc n) p)) -B \<and> a \<notin> alloccurringactions (inf (suffix (Suc n) p))" unfolding assms(2) by (subst notfaircontradiction; auto)
+  thus ?thesis using assms by auto
 qed
 
 text \<open>Defining violating paths, using \<open>freeuntiloccurrence\<close>.\<close>
 
 definition freeuntiloccurrence :: "('a, 's) path \<Rightarrow> 'a set \<Rightarrow> 'a set \<Rightarrow> bool" where
-"freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e = ((\<exists>i. \<not>(occurs \<alpha>\<^sub>f (fin (pref i p))) \<and> action (ind i p) \<in> \<alpha>\<^sub>e)
-  \<or> \<not>(occurs \<alpha>\<^sub>f p))"
+"freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e = ((\<exists>i. \<not>occurs \<alpha>\<^sub>f (fin (pref i p)) \<and> action (ind i p) \<in> \<alpha>\<^sub>e)
+  \<or> \<not>occurs \<alpha>\<^sub>f p)"
 
 definition violating :: "('a, 's) path \<Rightarrow> 'a rexp \<Rightarrow> 'a set \<Rightarrow> 'a set \<Rightarrow> bool" where
 "violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e = (\<exists>i. match \<rho> (pref i p) \<and> freeuntiloccurrence (suff i p) \<alpha>\<^sub>f \<alpha>\<^sub>e)"
@@ -876,80 +1224,50 @@ text \<open>Definition of \<open>freeuntiloccurrence\<close> does not specify th
 But if the action occurs only outside the bound, then it does not occur.\<close>
 
 lemma occursoutsidebound : 
-  assumes "\<exists>i \<ge> length p'. \<not> occurs \<alpha>\<^sub>f (fin (take i p')) \<and> action (p'!i) \<in> \<alpha>\<^sub>e"
-  shows "\<not> occurs \<alpha>\<^sub>f (fin p')"
+  assumes "\<exists>i \<ge> length p'. \<not>occurs \<alpha>\<^sub>f (fin (take i p')) \<and> action (p'!i) \<in> \<alpha>\<^sub>e"
+  shows "\<not>occurs \<alpha>\<^sub>f (fin p')"
   using assms take_all by metis
 
-lemma freeuntiloccurrence_inbound : "freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e = (\<not> occurs \<alpha>\<^sub>f p \<or> (\<exists>i \<in> indicespath p. \<not>occurs \<alpha>\<^sub>f (fin (pref i p)) \<and> action (ind i p) \<in> \<alpha>\<^sub>e))"
+lemma freeuntiloccurrence_inbound : "freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e = (\<not>occurs \<alpha>\<^sub>f p \<or> (\<exists>i \<in> indicespath p. \<not>occurs \<alpha>\<^sub>f (fin (pref i p)) \<and> action (ind i p) \<in> \<alpha>\<^sub>e))"
   apply (cases p; simp add: freeuntiloccurrence_def del: occurssimps)
   using occursoutsidebound leI apply blast+
   done
 
 text \<open>The existence of a progressing path that is \<open>\<alpha>\<^sub>f\<close> free until occurrence of \<open>\<alpha>\<^sub>e\<close> can be split into 4 cases.\<close>
 
-lemma freeuntiloccurrence_cases :
-  shows "freeuntiloccurrence (fin p) \<alpha>\<^sub>f \<alpha>\<^sub>e = (\<not> occurs \<alpha>\<^sub>f (fin p) \<or> (\<exists>i < length p. \<not>(occurs \<alpha>\<^sub>f (fin (take i p))) \<and> action (p!i) \<in> \<alpha>\<^sub>e))"
-  and "freeuntiloccurrence (inf p') \<alpha>\<^sub>f \<alpha>\<^sub>e = (\<not> occurs \<alpha>\<^sub>f (inf p')  \<or> (\<exists>i. \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and> action (p' i) \<in> \<alpha>\<^sub>e))"
-  apply (simp_all only: freeuntiloccurrence_inbound)
-  apply simp_all
-  done
-
-lemma freeuntiloccurrenceprogressing_cases [simp] : 
-  shows "(freeuntiloccurrence (fin p) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B (fin p)) = 
-   (\<exists>s'. validfinpath M s p s' \<and> locked M B s' \<and> (\<not> occurs \<alpha>\<^sub>f (fin p) \<or> (\<exists>i < length p. \<not>(occurs \<alpha>\<^sub>f (fin (take i p))) \<and> action (p!i) \<in> \<alpha>\<^sub>e)))"
-  and "(freeuntiloccurrence (inf p') \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B (inf p')) = 
-   (validinfpath M s p' \<and> (\<not> occurs \<alpha>\<^sub>f (inf p') \<or> (\<exists>i. \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and> action (p' i) \<in> \<alpha>\<^sub>e)))"
-  apply (simp_all only: freeuntiloccurrence_cases)
-  apply auto
-  done
-
-lemma existfreeuntiloccurrenceprogressing_cases_pred [simp] : 
-  shows "(\<exists> p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> P s p) = 
- ((\<exists>p' s'. validfinpath M s p' s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p') \<and> locked M B s' \<and> P s (fin p')) \<or> 
-  (\<exists>p' s'. validfinpath M s p' s' \<and> (\<exists>i < length p'. \<not>(occurs \<alpha>\<^sub>f (fin (take i p'))) \<and> action (p'!i) \<in> \<alpha>\<^sub>e) \<and> locked M B s' \<and> P s (fin p')) \<or>
-  (\<exists>p'. validinfpath M s p' \<and> \<not> occurs \<alpha>\<^sub>f (inf p') \<and> P s (inf p')) \<or>
-  (\<exists>p'. validinfpath M s p' \<and>  (\<exists>i. \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and> action (p' i) \<in> \<alpha>\<^sub>e) \<and> P s (inf p')))"
+lemma existfreeuntiloccurrenceprogressing_cases_pred [simp] :
+  assumes "\<And>p s'. validfinpath M s p s' \<Longrightarrow> P s (fin p) = locked M B s'"
+  shows "(\<exists>p. validpath M s p \<and> freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> P s p) = 
+ ((\<exists>p' s'. validfinpath M s p' s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p') \<and> locked M B s') \<or> 
+  (\<exists>p' s'. validfinpath M s p' s' \<and> (\<exists>i < length p'. \<not>occurs \<alpha>\<^sub>f (fin (take i p')) \<and> action (p'!i) \<in> \<alpha>\<^sub>e) \<and> locked M B s') \<or>
+  (\<exists>p'. validinfpath M s p' \<and> \<not>occurs \<alpha>\<^sub>f (inf p') \<and> P s (inf p')) \<or>
+  (\<exists>p'. validinfpath M s p' \<and>  (\<exists>i. \<not>occurs \<alpha>\<^sub>f (fin (prefix i p')) \<and> action (p' i) \<in> \<alpha>\<^sub>e) \<and> P s (inf p')))"
   (is "?L = ?R")
 proof
   assume ?L
-  then obtain p where assum1: "freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> P s p" by auto
+  then obtain p where "validpath M s p \<and> freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> P s p" by auto
+  hence assum1: "validpath M s p \<and> (\<not>occurs \<alpha>\<^sub>f p \<or> (\<exists>i \<in> indicespath p. \<not>occurs \<alpha>\<^sub>f (fin (pref i p)) \<and> action (ind i p) \<in> \<alpha>\<^sub>e)) \<and> P s p" using freeuntiloccurrence_inbound by auto
   {
     fix finp
-    assume "p = fin finp"
-    hence "freeuntiloccurrence (fin finp) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B (fin finp) \<and> P s (fin finp)" using assum1 by simp
-    hence ?R using freeuntiloccurrenceprogressing_cases(1) by metis
+    assume assum2: "p = fin finp"
+    hence "validfinpath M s finp (laststate s finp) \<and> (\<not>occurs \<alpha>\<^sub>f (fin finp) \<or> (\<exists>i \<in> indicespath (fin finp). \<not>occurs \<alpha>\<^sub>f (fin (pref i (fin finp))) \<and> action (ind i (fin finp)) \<in> \<alpha>\<^sub>e)) \<and> locked M B (laststate s finp)" using assum1 validpath.simps(1) validfinpathlaststate assms by metis
+    hence "validfinpath M s finp (laststate s finp) \<and> (\<not>occurs \<alpha>\<^sub>f (fin finp) \<or> (\<exists>i < length finp. \<not>occurs \<alpha>\<^sub>f (fin (take i finp)) \<and> action (finp!i) \<in> \<alpha>\<^sub>e)) \<and> locked M B (laststate s finp)" by auto
+    hence ?R by blast
   }
   moreover {
     fix infp
     assume "p = inf infp"
-    hence "freeuntiloccurrence (inf infp) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B (inf infp) \<and> P s (inf infp)" using assum1 by simp
-    hence ?R using freeuntiloccurrenceprogressing_cases(2) by metis
+    hence "validinfpath M s infp \<and> (\<not>occurs \<alpha>\<^sub>f (inf infp) \<or> (\<exists>i. \<not>occurs \<alpha>\<^sub>f (fin (prefix i infp)) \<and> action (infp i) \<in> \<alpha>\<^sub>e)) \<and> P s (inf infp)" using assum1 by auto
+    hence ?R by blast
   }
-  ultimately show ?R by (rule path.exhaust; simp)
+  ultimately show ?R by (cases p)
 next
-  show "?R \<Longrightarrow> ?L" using freeuntiloccurrenceprogressing_cases by meson
+  have "\<And>p s'. validfinpath M s p s' \<and> (\<not>occurs \<alpha>\<^sub>f (fin p) \<or> (\<exists>i<length p. \<not>occurs \<alpha>\<^sub>f (fin (take i p)) \<and> action (p ! i) \<in> \<alpha>\<^sub>e)) \<and> locked M B s' \<Longrightarrow> validpath M s (fin p) \<and> (\<not>occurs \<alpha>\<^sub>f (fin p) \<or>  (\<exists>i\<in>indicespath (fin p). \<not>occurs \<alpha>\<^sub>f (fin (pref i (fin p))) \<and> action (ind i (fin p)) \<in> \<alpha>\<^sub>e)) \<and> P s (fin p)" using assms by auto
+  moreover have "\<And>p. validinfpath M s p \<and> (\<not>occurs \<alpha>\<^sub>f (inf p) \<or> (\<exists>i. \<not>occurs \<alpha>\<^sub>f (fin (prefix i p)) \<and> action (p i) \<in> \<alpha>\<^sub>e)) \<and> P s (inf p) \<Longrightarrow> validpath M s (inf p) \<and> (\<not>occurs \<alpha>\<^sub>f (inf p) \<or>  (\<exists>i\<in>indicespath (inf p). \<not>occurs \<alpha>\<^sub>f (fin (pref i (inf p))) \<and> action (ind i (inf p)) \<in> \<alpha>\<^sub>e)) \<and> P s (inf p)" by auto
+  ultimately show "?R \<Longrightarrow> ?L" apply (simp only: freeuntiloccurrence_inbound) by blast
 qed
 
-lemma existfreeuntiloccurrenceprogressing_cases [simp] : 
-  "(\<exists> p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p) = 
- ((\<exists>p' s'. validfinpath M s p' s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p') \<and> locked M B s') \<or> 
-  (\<exists>p' s'. validfinpath M s p' s' \<and> (\<exists>i < length p'. \<not>(occurs \<alpha>\<^sub>f (fin (take i p'))) \<and> action (p'!i) \<in> \<alpha>\<^sub>e) \<and> locked M B s') \<or>
-  (\<exists>p'. validinfpath M s p' \<and> \<not> occurs \<alpha>\<^sub>f (inf p')) \<or>
-  (\<exists>p'. validinfpath M s p' \<and>  (\<exists>i. \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and> action (p' i) \<in> \<alpha>\<^sub>e)))"
-proof-
-  have "(\<exists> p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> True) = 
- ((\<exists>p' s'. validfinpath M s p' s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p') \<and> locked M B s' \<and> True) \<or> 
-  (\<exists>p' s'. validfinpath M s p' s' \<and> (\<exists>i < length p'. \<not>(occurs \<alpha>\<^sub>f (fin (take i p'))) \<and> action (p'!i) \<in> \<alpha>\<^sub>e) \<and> locked M B s' \<and> True) \<or>
-  (\<exists>p'. validinfpath M s p' \<and> \<not> occurs \<alpha>\<^sub>f (inf p') \<and> True) \<or>
-  (\<exists>p'. validinfpath M s p' \<and>  (\<exists>i. \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and> action (p' i) \<in> \<alpha>\<^sub>e) \<and> True))"
-    by (rule existfreeuntiloccurrenceprogressing_cases_pred)
-  thus ?thesis by auto
-qed
-
-lemma prefixextendinfpath [simp]: "prefix (Suc i) (t ## p) = t # (prefix i p)"
-  by (induct i; simp)
-
-lemma invariantextension' : 
+lemma invariantextension_pred : 
   assumes "\<And>s. enabledactions M s = {} \<Longrightarrow> P s"
   and "\<nexists>p s'. validfinpath M s p s' \<and> P s'"
   shows "\<exists>a s'. (s, a, s') \<in> transition M \<and> (\<nexists>p s''. validfinpath M s' p s'' \<and> P s'')"
@@ -975,17 +1293,20 @@ qed
 lemma invariantextension : 
   assumes "\<nexists>p s''. validfinpath M s p s'' \<and> enabledactions M s'' = {}"
   shows "\<exists>a s'. (s, a, s') \<in> transition M \<and> (\<nexists>p s''. validfinpath M s' p s'' \<and> enabledactions M s'' = {})"
-  apply (rule invariantextension')
+  apply (rule invariantextension_pred)
   using assms apply blast+
   done
 
-text \<open>Defining functions to structurally create infinite paths (that are fair)\<close>
+text \<open>Defining functions to structurally create infinite paths (that are complete)\<close>
 
-lemma validinfpathsplitlaststate : "p \<noteq> []  \<Longrightarrow> (validfinpath M s p (laststate p) \<and> validinfpath M (laststate p) p') = validinfpath M s (conc p p')"
-  using validinfpathsplit validfinpathlaststate by metis
+abbreviation laststate_nonexhaustive :: "('a, 's) finpath \<Rightarrow> 's" where
+"laststate_nonexhaustive p \<equiv> target (last p)"
+
+lemma laststate_laststate_nonexhaustive : "p \<noteq> [] \<Longrightarrow> laststate s p = laststate_nonexhaustive p"
+  by (cases p; simp)
 
 function recursiveconcpaths :: "('s \<Rightarrow> ('a, 's) finpath) \<Rightarrow> 's \<Rightarrow> nat \<Rightarrow> 's \<times> 'a \<times> 's" where
-"recursiveconcpaths succ s n = (if succ s = [] then undefined else (if n < length (succ s) then (succ s)!n else (recursiveconcpaths succ (laststate (succ s)) (n - length (succ s)))))"
+"recursiveconcpaths succ s n = (if succ s = [] then undefined else (if n < length (succ s) then (succ s)!n else (recursiveconcpaths succ (laststate_nonexhaustive (succ s)) (n - length (succ s)))))"
   by auto
 termination 
   apply (relation "measure (\<lambda>(succ,s,n). n)")
@@ -997,14 +1318,14 @@ termination
 
 fun ithpath :: "('s \<Rightarrow> ('a, 's) finpath) \<Rightarrow> 's \<Rightarrow> nat \<Rightarrow> ('a, 's) finpath" where
 "ithpath succ s 0 = succ s" |
-"ithpath succ s (Suc i) = succ (laststate (ithpath succ s i))"
+"ithpath succ s (Suc i) = succ (laststate_nonexhaustive (ithpath succ s i))"
 
-lemma ithpath_right : "ithpath succ s (Suc i) = ithpath succ (laststate (succ s)) i"
+lemma ithpath_right : "ithpath succ s (Suc i) = ithpath succ (laststate_nonexhaustive (succ s)) i"
   by (induct i; simp)
 
 fun concipaths :: "('s \<Rightarrow> ('a, 's) finpath) \<Rightarrow> 's \<Rightarrow> nat \<Rightarrow> ('a, 's) finpath" where
 "concipaths succ s 0 = []" |
-"concipaths succ s (Suc i) = succ s @ concipaths succ (laststate (succ s)) i"
+"concipaths succ s (Suc i) = succ s @ concipaths succ (laststate_nonexhaustive (succ s)) i"
 
 lemma concipaths_right : "concipaths succ s (Suc i) = concipaths succ s i @ ithpath succ s i"
   apply (induct i arbitrary: s)
@@ -1013,39 +1334,39 @@ lemma concipaths_right : "concipaths succ s (Suc i) = concipaths succ s i @ ithp
   done
 
 lemma ithpath_somesucc : 
-  assumes "s \<in> S' \<and> (\<forall>s \<in> S'. laststate (succ s) \<in> S')"
+  assumes "s \<in> S' \<and> (\<forall>s \<in> S'. laststate_nonexhaustive (succ s) \<in> S')"
   shows "\<exists>s' \<in> S'. ithpath succ s i = succ s'"
   by (induct i; auto simp: assms)
 
 lemma ithpath_laststate :
-  assumes "s \<in> S' \<and> (\<forall>s \<in> S'. laststate (succ s) \<in> S')"
-  shows "laststate (ithpath succ s i) \<in> S'"
+  assumes "s \<in> S' \<and> (\<forall>s \<in> S'. laststate_nonexhaustive (succ s) \<in> S')"
+  shows "laststate_nonexhaustive (ithpath succ s i) \<in> S'"
   by (induct i; simp add: assms)
 
 lemma predicate_ithpath : 
-  assumes "P (succ s) \<and> s \<in> S' \<and> (\<forall>s \<in> S'. P (succ s) \<longrightarrow> P (succ (laststate (succ s))) \<and> laststate (succ s) \<in> S')"
+  assumes "P (succ s) \<and> s \<in> S' \<and> (\<forall>s \<in> S'. P (succ s) \<longrightarrow> P (succ (laststate_nonexhaustive (succ s))) \<and> laststate_nonexhaustive (succ s) \<in> S')"
   shows "P (ithpath succ s i)"
   apply (induct i)
   apply (simp add: assms)
 proof-
   fix i
-  have "P (ithpath succ s (Suc i)) \<and> laststate (ithpath succ s i) \<in> S'" by (induct i; simp add: assms)
+  have "P (ithpath succ s (Suc i)) \<and> laststate_nonexhaustive (ithpath succ s i) \<in> S'" by (induct i; simp add: assms)
   thus "P (ithpath succ s (Suc i))" by (simp add: assms)
 qed
 
-lemma ithpath_notempty : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S') \<longrightarrow> ithpath succ s i \<noteq> []"
+lemma ithpath_notempty : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate_nonexhaustive (succ s) \<in> S') \<longrightarrow> ithpath succ s i \<noteq> []"
   apply (induct i arbitrary : s)
   apply simp
    using ithpath_right apply metis
   done
 
-lemma allithpath_notempty : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S') \<Longrightarrow> (\<forall>j < i. ithpath succ s j \<noteq> [])"
+lemma allithpath_notempty : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate_nonexhaustive (succ s) \<in> S') \<Longrightarrow> (\<forall>j < i. ithpath succ s j \<noteq> [])"
   using ithpath_notempty by metis
 
 lemma lengthconcipaths : "(\<forall>j < i. ithpath succ s j \<noteq> []) \<longrightarrow> (length (concipaths succ s i)) \<ge> i"
   apply (induct i)
   apply simp
-   apply (simp only : concipaths_right)
+  apply (simp only : concipaths_right)
 proof
   fix i
   assume IH : "(\<forall>j<i. ithpath succ s j \<noteq> []) \<longrightarrow> i \<le> length (concipaths succ s i)"
@@ -1063,8 +1384,8 @@ proof-
   assume IH : "(\<And>m s. m = length (concipaths succ s i) \<and> k < length (ithpath succ s i) \<and>  (\<forall>j\<le>i. ithpath succ s j \<noteq> []) \<Longrightarrow> recursiveconcpaths succ s (m + k) = ithpath succ s i ! k)" 
   assume assum1: "m = length (concipaths succ s (Suc i)) \<and> k < length (ithpath succ s (Suc i)) \<and> (\<forall>j\<le>Suc i. ithpath succ s j \<noteq> [])"
   hence "m + k \<ge> length (succ s) \<and> succ s \<noteq> []" by auto
-  hence "recursiveconcpaths succ s (m + k) = recursiveconcpaths succ (laststate (succ s)) ((m - length (succ s)) + k)" using assum1 by auto
-  moreover have "... = ithpath succ (laststate (succ s)) i ! k"
+  hence "recursiveconcpaths succ s (m + k) = recursiveconcpaths succ (laststate_nonexhaustive (succ s)) ((m - length (succ s)) + k)" using assum1 by auto
+  moreover have "... = ithpath succ (laststate_nonexhaustive (succ s)) i ! k"
     apply (rule IH)
     using assum1 apply auto
     using ithpath_right assum1 Suc_le_mono apply metis+
@@ -1086,8 +1407,7 @@ lemma subsequence_eq_list : "length l = (j - i) \<and> (\<forall>k. k\<ge>i \<an
   apply (induct j arbitrary: l; simp)
   apply auto
 proof-
-  fix j 
-  fix l :: "'a list"
+  fix j l 
   assume IH : "(\<And>l'. length l' = j - i \<and> (\<forall>k. i \<le> k \<and> k < j \<longrightarrow> l ! (k - i) = l' ! (k - i)) \<Longrightarrow> map w [i..<j] = l')"
   assume assum1: "length l = Suc j - i"
   hence "length (take (j - i) l) = j - i" by auto
@@ -1142,43 +1462,64 @@ proof-
   ultimately show ?thesis by simp
 qed
 
-lemma suffix_recursiveconcpaths : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S') \<Longrightarrow> \<exists>s' \<in> S'. \<exists>j < length (succ s'). suffix i (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate (succ s')))"
+lemma suffix_recursiveconcpaths : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate_nonexhaustive (succ s) \<in> S') \<Longrightarrow> \<exists>s' \<in> S'. \<exists>j < length (succ s'). suffix i (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate_nonexhaustive (succ s')))"
   apply (induct i)
 proof-
-  assume "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S')"
-  hence "succ s \<noteq> [] \<and> s \<in> S' \<and> suffix 0 (recursiveconcpaths succ s) = conc (drop 0 (succ s)) (recursiveconcpaths succ (laststate (succ s)))" by auto
-  thus "\<exists>s' \<in> S'. \<exists>j < length (succ s'). suffix 0 (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate (succ s')))" by blast
+  assume "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate_nonexhaustive (succ s) \<in> S')"
+  hence "succ s \<noteq> [] \<and> s \<in> S' \<and> suffix 0 (recursiveconcpaths succ s) = conc (drop 0 (succ s)) (recursiveconcpaths succ (laststate_nonexhaustive (succ s)))" by auto
+  thus "\<exists>s' \<in> S'. \<exists>j < length (succ s'). suffix 0 (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate_nonexhaustive (succ s')))" by blast
 next
   fix i
-  assume IH : "s \<in> S' \<and> (\<forall>s\<in>S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S') \<Longrightarrow> \<exists>s'\<in>S'. \<exists>j<length (succ s'). suffix i (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate (succ s')))"
-  moreover assume assum1: "s \<in> S' \<and> (\<forall>s\<in>S'. succ s \<noteq> [] \<and> laststate (succ s) \<in> S')"
-  ultimately obtain j s' where "s' \<in> S' \<and> j < length (succ s') \<and> suffix i (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate (succ s')))" by auto
+  assume IH : "s \<in> S' \<and> (\<forall>s\<in>S'. succ s \<noteq> [] \<and> laststate_nonexhaustive (succ s) \<in> S') \<Longrightarrow> \<exists>s'\<in>S'. \<exists>j<length (succ s'). suffix i (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate_nonexhaustive (succ s')))"
+  moreover assume assum1: "s \<in> S' \<and> (\<forall>s\<in>S'. succ s \<noteq> [] \<and> laststate_nonexhaustive (succ s) \<in> S')"
+  ultimately obtain j s' where "s' \<in> S' \<and> j < length (succ s') \<and> suffix i (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate_nonexhaustive (succ s')))" by auto
   moreover have "Suc i = i + 1" by auto
-  ultimately have res1: "s' \<in> S' \<and> j < length (succ s') \<and> suffix (Suc i) (recursiveconcpaths succ s) = suffix 1 (conc (drop j (succ s')) (recursiveconcpaths succ (laststate (succ s'))))" using suffix_suffix by metis
+  ultimately have res1: "s' \<in> S' \<and> j < length (succ s') \<and> suffix (Suc i) (recursiveconcpaths succ s) = suffix 1 (conc (drop j (succ s')) (recursiveconcpaths succ (laststate_nonexhaustive (succ s'))))" using suffix_suffix by metis
   hence "length (succ s') = Suc j \<or> length (succ s') > Suc j" by auto
   moreover {
     assume assum2: "length (succ s') = Suc j"
-    hence "suffix (Suc i) (recursiveconcpaths succ s) = recursiveconcpaths succ (laststate (succ s'))" using res1 by simp
-    moreover have "... = conc (drop 0 (succ (laststate (succ s')))) (recursiveconcpaths succ (laststate (succ (laststate (succ s')))))" using res1 assum1 by auto
-    moreover have "0 < length (succ (laststate (succ s'))) \<and> laststate (succ s') \<in> S'" using res1 assum1 by auto
-    ultimately have "\<exists>s'\<in>S'. \<exists>j < length (succ s'). suffix (Suc i) (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate (succ s')))" by metis
+    hence "suffix (Suc i) (recursiveconcpaths succ s) = recursiveconcpaths succ (laststate_nonexhaustive (succ s'))" using res1 by simp
+    moreover have "... = conc (drop 0 (succ (laststate_nonexhaustive (succ s')))) (recursiveconcpaths succ (laststate_nonexhaustive (succ (laststate_nonexhaustive (succ s')))))" using res1 assum1 by auto
+    moreover have "0 < length (succ (laststate_nonexhaustive (succ s'))) \<and> laststate_nonexhaustive (succ s') \<in> S'" using res1 assum1 by auto
+    ultimately have "\<exists>s'\<in>S'. \<exists>j < length (succ s'). suffix (Suc i) (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate_nonexhaustive (succ s')))" by metis
   }
   moreover {
     assume "length (succ s') > Suc j"
-    moreover have "s' \<in> S' \<and> suffix (Suc i) (recursiveconcpaths succ s) =  conc (drop (Suc j) (succ s')) (recursiveconcpaths succ (laststate (succ s')))" using Suc_le_eq res1 by auto
-    ultimately have "\<exists>s'\<in>S'. \<exists>j < length (succ s'). suffix (Suc i) (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate (succ s')))" by auto
+    moreover have "s' \<in> S' \<and> suffix (Suc i) (recursiveconcpaths succ s) =  conc (drop (Suc j) (succ s')) (recursiveconcpaths succ (laststate_nonexhaustive (succ s')))" using Suc_le_eq res1 by auto
+    ultimately have "\<exists>s'\<in>S'. \<exists>j < length (succ s'). suffix (Suc i) (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate_nonexhaustive (succ s')))" by auto
   }
-  ultimately show "\<exists>s'\<in>S'. \<exists>j < length (succ s'). suffix (Suc i) (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate (succ s')))" by auto
+  ultimately show "\<exists>s'\<in>S'. \<exists>j < length (succ s'). suffix (Suc i) (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate_nonexhaustive (succ s')))" by auto
 qed
- 
+
+lemma suffix_recursiveconcpathslaststate : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate s (succ s) \<in> S') \<Longrightarrow> \<exists>s' \<in> S'. \<exists>j < length (succ s'). suffix i (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate s' (succ s')))"
+proof-
+  assume assum1: "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate s (succ s) \<in> S')"
+  hence "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate_nonexhaustive (succ s) \<in> S')" using laststate_laststate_nonexhaustive by metis
+  then obtain s' j where "s' \<in> S' \<and> j < length (succ s') \<and> suffix i (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate_nonexhaustive (succ s')))" using suffix_recursiveconcpaths by metis
+  moreover from this have "laststate_nonexhaustive (succ s') = laststate s' (succ s')" using laststate_laststate_nonexhaustive assum1 by metis
+  ultimately show "\<exists>s' \<in> S'. \<exists>j < length (succ s'). suffix i (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate s' (succ s')))" by auto
+qed
+
+lemma suffix_recursiveconcpathsrelentlessly : 
+  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
+  shows "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate_nonexhaustive (succ s) \<in> S') \<and> a \<in> A (target (recursiveconcpaths succ s n)) (inf (suffix (Suc n) (recursiveconcpaths succ s))) \<Longrightarrow> \<exists>s' p. s' \<in> S' \<and> a \<in> A s' (inf (recursiveconcpaths succ s')) \<and> suffix (Suc n) (recursiveconcpaths succ s) = conc p (recursiveconcpaths succ s')"
+proof-
+  assume "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate_nonexhaustive (succ s) \<in> S') \<and> a \<in> A (target (recursiveconcpaths succ s n)) (inf (suffix (Suc n) (recursiveconcpaths succ s)))"
+  hence assum1: "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate s (succ s) \<in> S') \<and> a \<in> A (target (recursiveconcpaths succ s n)) (inf (suffix (Suc n) (recursiveconcpaths succ s)))" using laststate_laststate_nonexhaustive by metis
+  then obtain s' j where assum2: "s' \<in> S' \<and> j < length (succ s') \<and> suffix (Suc n) (recursiveconcpaths succ s) = conc (drop j (succ s')) (recursiveconcpaths succ (laststate s' (succ s')))" using suffix_recursiveconcpathslaststate by metis
+  moreover have "A (target (recursiveconcpaths succ s n)) (inf (conc (drop j (succ s')) (recursiveconcpaths succ (laststate s' (succ s'))))) = A (laststate s' (succ s')) (inf (recursiveconcpaths succ (laststate s' (succ s'))))" by (rule relentlessly_infextendpath[OF assms])
+  ultimately have "a \<in> A (laststate s' (succ s')) (inf (recursiveconcpaths succ (laststate s' (succ s'))))" using assum1 by metis
+  thus "\<exists>s' p. s' \<in> S' \<and> a \<in> A s' (inf (recursiveconcpaths succ s')) \<and> suffix (Suc n) (recursiveconcpaths succ s) = conc p (recursiveconcpaths succ s')" using assum1 assum2 by auto
+qed
+
 lemma unfoldrecursiveconcpaths : 
   assumes "succ s \<noteq> []"
-  shows "recursiveconcpaths succ s = conc (succ s) (recursiveconcpaths succ (laststate (succ s)))"     
+  shows "recursiveconcpaths succ s = conc (succ s) (recursiveconcpaths succ (laststate_nonexhaustive (succ s)))"     
   using assms by auto
 
 lemma source_eq_target :
-  assumes "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (source ((succ s) ! 0)) = s \<and> laststate (succ s) \<in> S')"
-  shows "laststate (ithpath succ s n) \<in> S' \<and> source ((ithpath succ s (Suc n)) ! 0) = laststate (ithpath succ s n)"
+  assumes "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (source ((succ s) ! 0)) = s \<and> laststate_nonexhaustive (succ s) \<in> S')"
+  shows "laststate_nonexhaustive (ithpath succ s n) \<in> S' \<and> source ((ithpath succ s (Suc n)) ! 0) = laststate_nonexhaustive (ithpath succ s n)"
   apply (induct n)
   apply (simp add: assms)
    unfolding ithpath.simps using assms apply blast
@@ -1186,45 +1527,19 @@ lemma source_eq_target :
 
 lemma lasttarget_eq_targetithpath : 
   assumes "ithpath succ s n \<noteq> []"
-  shows "laststate (concipaths succ s (Suc n)) = laststate (ithpath succ s n)"
+  shows "laststate_nonexhaustive (concipaths succ s (Suc n)) = laststate_nonexhaustive (ithpath succ s n)"
   by (simp add: concipaths_right assms del: concipaths.simps)
 
 lemma laststate_suc :
-  "((\<lambda>s. laststate (succ s)) ^^ Suc n) s = ((\<lambda>s. laststate (succ s)) ^^ n) (laststate (succ s))"
+  "((\<lambda>s. laststate_nonexhaustive (succ s)) ^^ Suc n) s = ((\<lambda>s. laststate_nonexhaustive (succ s)) ^^ n) (laststate_nonexhaustive (succ s))"
   by (induct n; simp)
 
-lemma source_ithpath_eqlaststate :
-  assumes "\<forall>s \<in> S'. source (succ s ! 0) = s \<and> laststate (succ s) \<in> S'"
-  shows "s \<in> S' \<longrightarrow> source (ithpath succ s n ! 0) = ((\<lambda>s. laststate (succ s)) ^^ n) s"
-  apply (induct n arbitrary: s)
-  apply (simp add: assms) 
-   apply (simp only: ithpath_right)
-   using laststate_suc assms apply metis
-  done
-
-lemma source_ithpath_eqtarget_Suc : 
-  "ithpath succ s n \<noteq> [] \<and> validfinpath M s' (ithpath succ s n) s'' \<Longrightarrow> ((\<lambda>s. laststate (succ s)) ^^ (Suc n)) s = s''"
-  apply (induct n arbitrary: s)
-  apply simp
-  using validfinpathlaststate apply meson
-   apply (simp only: laststate_suc)
-   apply (simp add: ithpath_right del: ithpath.simps)
-  done
-
-lemma source_ithpath_eqtarget_concipaths_Suc : 
-  "ithpath succ s n \<noteq> [] \<and> validfinpath M s (concipaths succ s (Suc n)) s' \<Longrightarrow> ((\<lambda>s. laststate (succ s)) ^^ (Suc n)) s = s'"
-  apply (simp only: concipaths_right validfinpathsplit)
-proof-
-  assume "ithpath succ s n \<noteq> [] \<and> (\<exists>s''. validfinpath M s (concipaths succ s n) s'' \<and> validfinpath M s'' (ithpath succ s n) s')"
-  then obtain s'' where "ithpath succ s n \<noteq> [] \<and> validfinpath M s'' (ithpath succ s n) s'" by auto
-  thus "((\<lambda>s. laststate (succ s)) ^^ (Suc n)) s = s'" using source_ithpath_eqtarget_Suc by simp
-qed
-
-lemma validinfpathconc : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (\<exists>s' \<in> S'. validfinpath M s (succ s) s')) \<Longrightarrow> validinfpath M s (recursiveconcpaths succ s)"
+lemma validinfpathconc :
+  "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (\<exists>s' \<in> S'. validfinpath M s (succ s) s')) \<Longrightarrow> validinfpath M s (recursiveconcpaths succ s)"
   apply (simp add: validinfpath_def del: recursiveconcpaths.simps)
 proof
   assume "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> (\<exists>s' \<in> S'. validfinpath M s (succ s) s'))"
-  hence assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> validfinpath M s (succ s) (laststate (succ s)) \<and> laststate (succ s) \<in> S')" using validfinpathlaststate by metis
+  hence assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> validfinpath M s (succ s) (laststate_nonexhaustive (succ s)) \<and> laststate_nonexhaustive (succ s) \<in> S')" using validfinpathlaststate laststate_laststate_nonexhaustive by metis
   have "s = source ((succ s)!0)" using validfinpathsource assum1 by metis
   thus "s = source (recursiveconcpaths succ s 0)" using assum1 by simp
   have res1: "\<forall>n. \<exists>s' \<in> S'. validfinpath M s (concipaths succ s n) s'"
@@ -1247,7 +1562,7 @@ proof
 qed
 
 lemma successorlemma :
-  assumes "(s \<in> S' \<and> (\<forall>s'. s' \<in> S' \<longrightarrow> (\<exists>t. source t = s' \<and> P t \<and> t \<in> transition M \<and> target t \<in> S')))"
+  assumes "s \<in> S' \<and> (\<forall>s'. s' \<in> S' \<longrightarrow> (\<exists>t. source t = s' \<and> P t \<and> t \<in> transition M \<and> target t \<in> S'))"
   shows "(\<exists> p. validinfpath M s p \<and> (\<forall>n. P (p n)))"
 proof-
   from assms obtain succ where assum1: "\<forall>s'. s' \<in> S' \<longrightarrow> source (succ s') = s' \<and> P (succ s') \<and> (succ s') \<in> transition M \<and> target (succ s') \<in> S'" by metis
@@ -1263,51 +1578,29 @@ qed
 
 lemma successorlemma_no_pred : 
   assumes "s \<in> S' \<and> (\<forall>s'. s' \<in> S' \<longrightarrow> (\<exists>t. source t = s' \<and> t \<in> transition M \<and> target t \<in> S'))"
-  shows "\<exists> p. validinfpath M s p"
-proof-
-  from assms have assum1: "(s \<in> S' \<and> (\<forall>s'. s' \<in> S' \<longrightarrow> (\<exists>t. source t = s' \<and> True \<and> t \<in> transition M \<and> target t \<in> S')))" by auto
-  have "(\<exists> p. validinfpath M s p \<and> (\<forall>n. (\<lambda>t. True) (p n)))"
-    apply (rule successorlemma)
-    using assum1 apply auto
-    done
-  thus "(\<exists> p. validinfpath M s p)" by auto
-qed
+  shows "\<exists>p. validinfpath M s p"
+  using assms by (insert successorlemma[of s _ "\<lambda>n. True"]; auto)
 
-(*opschonen*)
 lemma validpredconc :
-  assumes "Q s [] \<and> (\<forall>p p'. p \<noteq> [] \<and> Q s p \<and> Q (laststate p) p' \<longrightarrow> Q s (p @ p'))"
-  and "\<forall>p n. n < length p \<and> Q s p \<longrightarrow> P s (p ! n)"
-  shows "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> Q s (succ s) \<and> laststate (succ s) \<in> S') \<Longrightarrow> (\<forall>n. P s (recursiveconcpaths succ s n))"
+  assumes "\<And>p p'. Q s p \<and> Q (laststate s p) p' \<Longrightarrow> Q s (p @ p')"
+  and "\<And>p n. n < length p \<and> Q s p \<Longrightarrow> P s (p ! n)"
+  shows "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> Q s (succ s) \<and> laststate_nonexhaustive (succ s) \<in> S') \<Longrightarrow> (\<forall>n. P s (recursiveconcpaths succ s n))"
 proof
-  assume assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> Q s (succ s) \<and> laststate (succ s) \<in> S')"
-  have res1: "\<forall>n. Q s (concipaths succ s n)"
-  proof
-    fix n
-    show "Q s (concipaths succ s n)"
-      apply (induct n)
-      apply (simp add: assms(1))
-    proof-
-      fix n
-      show "Q s (concipaths succ s (Suc n))"
-        apply (induct n)
-        apply (simp add: assum1)
-      proof-
-        fix n
-        assume assum2 : "Q s (concipaths succ s (Suc n))"
-(*staat dit al ergens anders?*)
-        have "ithpath succ s n \<noteq> []" by (subst ithpath_notempty [where ?S'=S']; simp add: assum1)
-        moreover have "concipaths succ s (Suc n) = concipaths succ s n @ ithpath succ s n" using concipaths_right by metis
-        ultimately have laststate: "laststate (concipaths succ s (Suc n)) = laststate (ithpath succ s n)" by simp
-        have "laststate (ithpath succ s n) \<in> S'" using ithpath_laststate assum1 by metis
-        hence "Q (laststate (ithpath succ s n)) (ithpath succ s (Suc n))" using assum1 by simp
-        hence "Q (laststate (concipaths succ s (Suc n))) (ithpath succ s (Suc n))" using laststate by auto
-        moreover have "(concipaths succ s (Suc n)) \<noteq> []" using assum1 by simp
-        ultimately have "Q s (concipaths succ s (Suc n) @ ithpath succ s (Suc n))" using assum2 assms(1) by metis
-        thus "Q s (concipaths succ s (Suc (Suc n)))" using concipaths_right by metis
-      qed
-    qed
-  qed
+  assume assum1 : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> Q s (succ s) \<and> laststate_nonexhaustive (succ s) \<in> S')"
   fix n
+  have res1: "Q s (concipaths succ s (Suc n))"
+    apply (induct n, simp add: assum1)
+  proof-
+    fix n
+    have "ithpath succ s n \<noteq> []" by (subst ithpath_notempty [where ?S'=S']; simp add: assum1)
+    hence "laststate_nonexhaustive (concipaths succ s (Suc n)) = laststate_nonexhaustive (ithpath succ s n)" using lasttarget_eq_targetithpath by simp
+    moreover have "laststate_nonexhaustive (ithpath succ s n) \<in> S'" using ithpath_laststate assum1 by metis
+    ultimately have "Q (laststate_nonexhaustive (concipaths succ s (Suc n))) (ithpath succ s (Suc n))" using assum1 by auto
+    moreover have "concipaths succ s (Suc n) \<noteq> []" using assum1 by simp
+    moreover assume "Q s (concipaths succ s (Suc n))"
+    ultimately have "Q s (concipaths succ s (Suc n) @ ithpath succ s (Suc n))" using assms(1) laststate_laststate_nonexhaustive by metis
+    thus "Q s (concipaths succ s (Suc (Suc n)))" using concipaths_right by metis
+  qed
   have "(\<forall>j<Suc n. ithpath succ s j \<noteq> [])" using assum1 ithpath_notempty by metis
   moreover have "n < Suc n" by auto
   ultimately have "recursiveconcpaths succ s n = (concipaths succ s (Suc n)) ! n \<and> length (concipaths succ s (Suc n)) \<ge> Suc n" using concipaths_nth lengthconcipaths by metis
@@ -1324,7 +1617,7 @@ proof-
     let ?S' = "{s. \<nexists>p s'. validfinpath M s p s' \<and> enabledactions M s' = {}}"
     have res1: "s \<in> ?S'" using assum1 by auto
     have res2: "\<forall>s'. s' \<in> ?S' \<longrightarrow> (\<exists>t. source t = s' \<and> t \<in> transition M \<and> target t \<in> ?S')" using assum1 invariantextension by auto
-    show "\<exists> p. validinfpath M s p"
+    show "\<exists>p. validinfpath M s p"
       apply (rule successorlemma_no_pred)
       using res1 res2 apply blast
       done
@@ -1332,20 +1625,14 @@ proof-
   thus ?thesis by blast
 qed  
 
-lemma extendpath :
-  assumes "validfinpath M s p s'"
-  shows "(\<exists>p' s''. validfinpath M s (p @ p') s'' \<and> enabledactions M s'' = {}) \<or> (\<exists>p'. validinfpath M s (conc p p'))"
-proof-
-  have "(\<exists>p' s''. validfinpath M s' p' s'' \<and> enabledactions M s'' = {}) \<or> (\<exists>p'. validinfpath M s' p')" using exists_extensionpath by metis 
-  thus ?thesis using assms validinfpathsplit validfinpathsplit by metis
-qed
+text \<open>Simplifications for valid progressing paths that are complete. These can be split into different cases.\<close>
 
 lemma splitvalidfinpath_notoccursenabled : 
-  assumes feasible: "\<forall>s'. (\<exists>p' s''. validfinpath M s' p' s'' \<and> locked M B s'') \<or> (\<exists>p'. validinfpath M s' p' \<and> P s' (inf p'))"
-  and extendinfpath: "\<forall>s' p p'. validfinpath M s p s' \<and> validinfpath M s' p' \<longrightarrow> P s' (inf p') = P s (inf (conc p p'))"
-  shows "(\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> enabled M s' \<alpha>\<^sub>e) =
-  ((\<exists>p' s'. validfinpath M s p' s' \<and> (\<exists>i < length p'. \<not>(occurs \<alpha>\<^sub>f (fin (take i p'))) \<and> action (p'!i) \<in> \<alpha>\<^sub>e) \<and> locked M B s') \<or>
-  (\<exists>p'. validinfpath M s p' \<and>  (\<exists>i. \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and> action (p' i) \<in> \<alpha>\<^sub>e) \<and> P s (inf p')))" 
+  assumes feasible: "\<And>s'. (\<exists>p' s''. validfinpath M s' p' s'' \<and> locked M B s'') \<or> (\<exists>p'. validinfpath M s' p' \<and> P s' (inf p'))"
+  and extendinfpath: "\<And>s' p p'. validfinpath M s p s' \<and> validinfpath M s' p' \<Longrightarrow> P s' (inf p') = P s (inf (conc p p'))"
+  shows "(\<exists>p s'. validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> enabled M s' \<alpha>\<^sub>e) =
+  ((\<exists>p' s'. validfinpath M s p' s' \<and> (\<exists>i < length p'. \<not>occurs \<alpha>\<^sub>f (fin (take i p')) \<and> action (p'!i) \<in> \<alpha>\<^sub>e) \<and> locked M B s') \<or>
+  (\<exists>p'. validinfpath M s p' \<and>  (\<exists>i. \<not>occurs \<alpha>\<^sub>f (fin (prefix i p')) \<and> action (p' i) \<in> \<alpha>\<^sub>e) \<and> P s (inf p')))" 
   (is "?L = (?R1 \<or> ?R2)")
 proof
   {
@@ -1368,7 +1655,7 @@ proof
   ultimately show "(?R1 \<or> ?R2) \<Longrightarrow> ?L" by blast
 next
   assume ?L
-  then obtain p s' s'' a where assum1: "validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> a \<in> \<alpha>\<^sub>e \<and> (s', a, s'') \<in> transition M" by (auto simp: enabled_def)
+  then obtain p s' s'' a where assum1: "validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> a \<in> \<alpha>\<^sub>e \<and> (s', a, s'') \<in> transition M" by (auto simp: enabled_def)
   let ?t = "(s', a, s'')"
   let ?p = "p@[?t]"
   have validfinpath : "validfinpath M s ?p s''" using assum1 by simp
@@ -1390,113 +1677,67 @@ next
   ultimately show "?R1 \<or> ?R2" by auto
 qed
 
-lemma splitvalidfinpath_notoccurslockedenabled : "(\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> enabled M s' \<alpha>\<^sub>e)) =
-  ((\<exists>p' s'. validfinpath M s p' s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p') \<and> locked M B s') \<or> 
-  (\<exists>p' s'. validfinpath M s p' s' \<and> (\<exists>i < length p'. \<not>(occurs \<alpha>\<^sub>f (fin (take i p'))) \<and> action (p'!i) \<in> \<alpha>\<^sub>e) \<and> locked M B s') \<or>
-  (\<exists>p'. validinfpath M s p' \<and>  (\<exists>i. \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and> action (p' i) \<in> \<alpha>\<^sub>e)))" 
-proof-
-  have "(\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> enabled M s' \<alpha>\<^sub>e)) = 
-   ((\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> locked M B s') \<or> 
-   (\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> enabled M s' \<alpha>\<^sub>e))" by blast
-  moreover have "(\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> enabled M s' \<alpha>\<^sub>e) = 
-  ((\<exists>p' s'. validfinpath M s p' s' \<and> (\<exists>i < length p'. \<not>(occurs \<alpha>\<^sub>f (fin (take i p'))) \<and> action (p'!i) \<in> \<alpha>\<^sub>e) \<and> locked M B s') \<or>
-  (\<exists>p'. validinfpath M s p' \<and>  (\<exists>i. \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and> action (p' i) \<in> \<alpha>\<^sub>e)))"
-  proof-
-    have "(\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> enabled M s' \<alpha>\<^sub>e) =
-    ((\<exists>p' s'. validfinpath M s p' s' \<and> (\<exists>i < length p'. \<not>(occurs \<alpha>\<^sub>f (fin (take i p'))) \<and> action (p'!i) \<in> \<alpha>\<^sub>e) \<and> locked M B s') \<or>
-    (\<exists>p'. validinfpath M s p' \<and>  (\<exists>i. \<not>(occurs \<alpha>\<^sub>f (fin (prefix i p'))) \<and> action (p' i) \<in> \<alpha>\<^sub>e) \<and> True))"
-      apply (rule splitvalidfinpath_notoccursenabled; simp)
-    proof
-      fix s'
-      have "(\<exists>p' s''. validfinpath M s' p' s'' \<and> enabledactions M s'' = {}) \<or> (\<exists>p'. validinfpath M s' p')" by (rule exists_extensionpath)
-      moreover have "\<forall>s''. enabledactions M s'' = {} \<longrightarrow> locked M B s''" by (simp add: locked_def)
-      ultimately show "(\<exists>p' s''. validfinpath M s' p' s'' \<and> locked M B s'') \<or> (\<exists>p'. validinfpath M s' p')" by auto
-    qed
-    thus ?thesis by simp
-  qed
-  ultimately show ?thesis by simp
-qed
-
 lemma freeuntiloccurrenceprogressing_lockedenabled_pred: 
   assumes feasible: "\<And>s'. (\<exists>p' s''. validfinpath M s' p' s'' \<and> locked M B s'') \<or> (\<exists>p'. validinfpath M s' p' \<and> P s' (inf p'))"
-  and extendinfpath: "\<And>s' p p'. validfinpath M s p s' \<and> validinfpath M s' p' \<Longrightarrow> P s' (inf p') = P s (inf (conc p p'))"
-  and invarfin: "\<And>p s s'. validfinpath M s p s' \<and> locked M B s' \<Longrightarrow> P s (fin p)"
-  shows "(\<exists>p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> P s p) = 
-  ((\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> enabled M s' \<alpha>\<^sub>e))
-  \<or> (\<exists>p. validinfpath M s p \<and> \<not> occurs \<alpha>\<^sub>f (inf p) \<and> P s (inf p)))"
+  and extendpath: "\<And>s' p p'. validfinpath M s p s' \<and> validpath M s' p' \<Longrightarrow> P s (extendfinpath p p') = P s' p'"
+  and locking: "\<And>s. locked M B s = P s (fin [])"
+  shows "(\<exists>p. validpath M s p \<and> freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> P s p) = 
+  ((\<exists>p s'. validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> enabled M s' \<alpha>\<^sub>e))
+  \<or> (\<exists>p. validinfpath M s p \<and> \<not>occurs \<alpha>\<^sub>f (inf p) \<and> P s (inf p)))"
 proof-
-  have "(\<exists>p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> P s p) = 
-  ((\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> locked M B s')
-  \<or> (\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> enabled M s' \<alpha>\<^sub>e)
-  \<or> (\<exists>p. validinfpath M s p \<and> \<not> occurs \<alpha>\<^sub>f (inf p) \<and> P s (inf p)))"
-  apply (subst existfreeuntiloccurrenceprogressing_cases_pred)
-  apply (subst splitvalidfinpath_notoccursenabled[where ?P = P])
-  using feasible apply blast
-  using extendinfpath apply blast
-  using invarfin apply blast
-  done
+  have "(\<exists>p. validpath M s p \<and> freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> P s p) = 
+  ((\<exists>p s'. validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> locked M B s')
+  \<or> (\<exists>p s'. validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> enabled M s' \<alpha>\<^sub>e)
+  \<or> (\<exists>p. validinfpath M s p \<and> \<not>occurs \<alpha>\<^sub>f (inf p) \<and> P s (inf p)))"
+    apply (subst existfreeuntiloccurrenceprogressing_cases_pred[where?B=B])
+    using locking extendpath apply force
+    apply (subst splitvalidfinpath_notoccursenabled[where ?P = P])
+    using feasible apply blast
+    using extendpath apply force
+    apply blast
+    done
   thus ?thesis by blast
 qed
 
-lemma freeuntiloccurrenceprogressing_lockedenabled: "(\<exists>p. freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p) = 
-  ((\<exists>p s'. validfinpath M s p s' \<and> \<not> occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> enabled M s' \<alpha>\<^sub>e))
-  \<or> (\<exists>p. validinfpath M s p \<and> \<not> occurs \<alpha>\<^sub>f (inf p)))"
-  apply (subst existfreeuntiloccurrenceprogressing_cases)
-  apply (subst splitvalidfinpath_notoccurslockedenabled)
-  apply auto
-  done
-
-lemma progressingsubpath : "progressing M s B p \<Longrightarrow> (\<exists>s'. validfinpath M s (pref i p) s' \<and> progressing M s' B (suff i p))"
-  apply (cases p; simp)
-  apply (metis append_take_drop_id validfinpathsplit)
-  apply (metis validinfsubpath validinfsubpathright)
-  done
-
-lemma progressing_valid : "progressing M s B p \<Longrightarrow> validpath M s p" by (cases p; auto)
-
+lemma freeuntiloccurrenceprogressing_lockedenabled: "(\<exists>p. validpath M s p \<and> freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M B s p) = 
+  ((\<exists>p s'. validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> enabled M s' \<alpha>\<^sub>e))
+  \<or> (\<exists>p. validinfpath M s p \<and> \<not>occurs \<alpha>\<^sub>f (inf p)))"
+  apply (subst freeuntiloccurrenceprogressing_lockedenabled_pred [of _ B]; simp?)
+proof-
+  fix p'
+  show "\<And>s' p. validfinpath M s p s' \<and> validpath M s' p' \<Longrightarrow> progressing M B s (extendfinpath p p') = progressing M B s' p'"
+    apply (cases p'; simp) using validfinpathlaststate by metis
+next
+  fix s
+  have "(\<exists>p s'. validfinpath M s p s' \<and> enabledactions M s' = {}) \<or> (\<exists>p. validinfpath M s p)" by (rule exists_extensionpath)
+  moreover have "\<And>s. enabledactions M s = {} \<Longrightarrow> locked M B s" unfolding locked_def by auto
+  ultimately show "(\<exists>p s'. validfinpath M s p s' \<and> locked M B s') \<or> (\<exists>p. validinfpath M s p)" by blast
+qed
+ 
 lemma splitviolating_predicate [simp] : 
   assumes extendpath: "\<And>p p' s'. validfinpath M s p s' \<and> validpath M s' p' \<Longrightarrow> P s' p' = P s (extendfinpath p p')"
-  shows "(\<exists>p. violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> P s p) = 
-  (\<exists>p p' s'. match \<rho> p  \<and> validfinpath M s p s' \<and> freeuntiloccurrence p' \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s' B p' \<and> P s' p')"
- (is "?L = ?R")
+  shows "(\<exists>p. validpath M s p \<and> violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> P s p) = 
+  (\<exists>p p' s'. validfinpath M s p s' \<and> match \<rho> p  \<and> validpath M s' p' \<and> freeuntiloccurrence p' \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> P s' p')"
+  (is "?L = ?R")
 proof
   assume ?L
-  then obtain p i where "match \<rho> (pref i p) \<and> freeuntiloccurrence (suff i p) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> P s p" using violating_def by blast
-  hence "\<exists>s'. validpath M s' (suff i p) \<and> match \<rho> (pref i p) \<and> validfinpath M s (pref i p) s' \<and> freeuntiloccurrence (suff i p) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s' B (suff i p) \<and> P s (extendfinpath (pref i p) (suff i p))" using extendfinpath_pref_suff progressingsubpath progressing_valid by metis
-  hence "\<exists>s'. match \<rho> (pref i p) \<and> validfinpath M s (pref i p) s' \<and> freeuntiloccurrence (suff i p) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s' B (suff i p) \<and> P s' (suff i p)" using extendpath by auto
+  hence "\<exists>p i s'. validfinpath M s (pref i p) s' \<and> match \<rho> (pref i p) \<and> validpath M s' (suff i p) \<and> freeuntiloccurrence (suff i p) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> P s (extendfinpath (pref i p) (suff i p))" unfolding violating_def using extendfinpath_pref_suff validpathsplit by metis
+  hence "\<exists>p i s'. validfinpath M s (pref i p) s' \<and> match \<rho> (pref i p) \<and> validpath M s' (suff i p) \<and> freeuntiloccurrence (suff i p) \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> P s' (suff i p)" using extendpath by metis
   thus ?R by auto
 next
   assume ?R
-  then obtain p p' s' where assum1: "match \<rho> p  \<and> validfinpath M s p s' \<and> freeuntiloccurrence p' \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s' B p' \<and> P s' p'" by auto
-  {
-    fix fp
-    assume assum2 : "p' = fin fp"
-    hence "match \<rho> p \<and> freeuntiloccurrence (fin fp) \<alpha>\<^sub>f \<alpha>\<^sub>e" using assum1 by auto
-    hence "match \<rho> (pref (length p) (fin (p @ fp))) \<and> freeuntiloccurrence ((suff (length p) (fin (p @ fp)))) \<alpha>\<^sub>f \<alpha>\<^sub>e" by auto
-    hence "violating (fin (p @ fp)) \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e" unfolding violating_def by blast
-    moreover have "progressing M s B (fin (p @ fp)) " using assum1 assum2 extendpath by auto
-    moreover have "P s (fin (p @ fp))" using assum1 progressing_valid assum2 extendpath extendfinpath.simps(1) by metis
-    ultimately have "\<exists>p. violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> P s p" by blast
-  }
-  moreover {
-    fix ip
-    assume assum2 : "p' = inf ip"
-    have "match \<rho> p \<and> freeuntiloccurrence (inf ip) \<alpha>\<^sub>f \<alpha>\<^sub>e" using assum1 assum2 by auto
-    hence "match \<rho> (prefix (length p) (conc p ip)) \<and> freeuntiloccurrence (inf (suffix (length p) (conc p ip))) \<alpha>\<^sub>f \<alpha>\<^sub>e" by auto
-    hence "violating (inf (conc p ip)) \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e" unfolding violating_def pref.simps suff.simps by blast
-    moreover have "progressing M s B (inf (conc p ip)) \<and> P s (inf (conc p ip))" using assum1 assum2 extendpath by auto
-    ultimately have "\<exists>p. violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> P s p" by blast
-  }
-  ultimately show "?R \<Longrightarrow> ?L" by (cases p')
+  then obtain p p' s' where assum1: "validfinpath M s p s' \<and> match \<rho> p \<and> validpath M s' p' \<and> freeuntiloccurrence p' \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> P s' p'" by auto
+  hence "match \<rho> (pref (length p) (extendfinpath p p')) \<and> freeuntiloccurrence (suff (length p) (extendfinpath p p')) \<alpha>\<^sub>f \<alpha>\<^sub>e" by simp
+  moreover have "validpath M s (extendfinpath p p') \<and> P s (extendfinpath p p')" using assum1 extendpath validpathsplit by metis
+  ultimately show ?L unfolding violating_def by blast
 qed
 
-lemma splitviolating [simp] : "(\<exists>p. violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p) =
-  (\<exists>p p' s'. match \<rho> p  \<and> validfinpath M s p s' \<and> freeuntiloccurrence p' \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s' B p')"
+lemma splitviolating : "(\<exists>p. validpath M s p \<and> violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M B s p) =
+  (\<exists>p p' s'. validfinpath M s p s' \<and> match \<rho> p \<and> validpath M s' p' \<and> freeuntiloccurrence p' \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M B s' p')"
+  apply (rule splitviolating_predicate)
 proof-
-  have "(\<exists>p. violating p \<rho> \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s B p \<and> True) =
-  (\<exists>p p' s'. match \<rho> p  \<and> validfinpath M s p s' \<and> freeuntiloccurrence p' \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M s' B p' \<and> True)"
-    by (rule splitviolating_predicate; simp)
-  thus ?thesis by simp
+  fix p'
+  show "\<And>p s'. validfinpath M s p s' \<and> validpath M s' p' \<Longrightarrow> progressing M B s' p' = progressing M B s (extendfinpath p p')" by (cases p'; auto simp: validfinpathlaststate)
 qed
 
 end
