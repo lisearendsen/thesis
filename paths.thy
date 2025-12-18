@@ -81,7 +81,7 @@ lemma actionenabled : "enabledactions M s \<noteq> {} = (\<exists>a s'. (s, a, s
 definition locked :: "('a, 's) lts \<Rightarrow> 'a set \<Rightarrow> 's \<Rightarrow> bool" where
 "locked M B s = (enabledactions M s \<subseteq> B)"
 
-lemma lockednegenabled : "locked M B s = (\<not> enabled M s (-B))" 
+lemma lockednegenabled : "locked M B s = (\<not>enabled M s (-B))" 
   by (auto simp: locked_def enabled_def)
 
 text \<open>A finite path matches a regular formula if and only if its sequence of actions is in the language 
@@ -984,7 +984,7 @@ proof-
   thus "a \<in> alloccurringactions (extendfinpath [t] p)" using occurringactionssubpath subset_iff by meson
 qed
 
-lemma relentlessly_extendpath: 
+lemma relentlessly_extendpath_laststate: 
   assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
   and "P = (\<lambda>s p. allsuffixes s p (\<lambda>s p. A s p -B \<subseteq> alloccurringactions p))"
   shows "P (laststate s p) p' = P s (extendfinpath p p')"
@@ -993,20 +993,11 @@ proof-
   thus ?thesis by simp
 qed
 
-lemma relentlessly_extendpath_valid:
+lemma relentlessly_extendpath:
   assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
   and "P = (\<lambda>s p. allsuffixes s p (\<lambda>s p. A s p -B \<subseteq> alloccurringactions p))"
   shows "validfinpath M s p s' \<Longrightarrow> P s' p' = P s (extendfinpath p p')"
-proof-
-  have "P s (extendfinpath p p') = P (laststate s p) p'" by (rule P_extendpath_notvalid[of P], rule relentlessly_subpath[OF assms])
-  thus "validfinpath M s p s' \<Longrightarrow> P s' p' = P s (extendfinpath p p')" by (simp add: validfinpathlaststate)
-qed
-
-lemma relentlessly_extendpath_inf:
-  assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
-  and "P = (\<lambda>s p. allsuffixes s p (\<lambda>s p. A s p -B \<subseteq> alloccurringactions p))"
-  shows "validfinpath M s p s' \<Longrightarrow> P s' (inf p') = P s (inf (conc p p'))"
-  by (subst relentlessly_extendpath_valid[OF assms]; simp)
+  using relentlessly_extendpath_laststate[OF assms] validfinpathlaststate by metis
 
 lemma relentlessly_infpathsuffix:
   assumes "A = (\<lambda>s p. {a. allsuffixes s p (\<lambda>s p. \<exists>s' \<in> alloccurringstates s p. Q a s')})"
@@ -1015,7 +1006,7 @@ lemma relentlessly_infpathsuffix:
 proof-
   assume "validinfpath M s p"
   hence "validfinpath M s (prefix n p) (source (p n)) \<and> inf p = extendfinpath (prefix n p) (inf (suffix n p))" by simp
-  moreover have "P (laststate s (prefix n p)) (inf (suffix n p)) = P s (extendfinpath (prefix n p) (inf (suffix n p)))" by (rule relentlessly_extendpath; simp add: assms)
+  moreover have "P (laststate s (prefix n p)) (inf (suffix n p)) = P s (extendfinpath (prefix n p) (inf (suffix n p)))" by (rule relentlessly_extendpath_laststate; simp add: assms)
   ultimately show "P s (inf p) = P (source (p n)) (inf (suffix n p))" using validfinpathlaststate by metis
 qed
 
@@ -1363,13 +1354,13 @@ lemma ithpath_notempty : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq
 lemma allithpath_notempty : "s \<in> S' \<and> (\<forall>s \<in> S'. succ s \<noteq> [] \<and> laststate_nonexhaustive (succ s) \<in> S') \<Longrightarrow> (\<forall>j < i. ithpath succ s j \<noteq> [])"
   using ithpath_notempty by metis
 
-lemma lengthconcipaths : "(\<forall>j < i. ithpath succ s j \<noteq> []) \<longrightarrow> (length (concipaths succ s i)) \<ge> i"
+lemma lengthconcipaths : "(\<forall>j < i. ithpath succ s j \<noteq> []) \<Longrightarrow> (length (concipaths succ s i)) \<ge> i"
   apply (induct i)
   apply simp
   apply (simp only : concipaths_right)
-proof
+proof-
   fix i
-  assume IH : "(\<forall>j<i. ithpath succ s j \<noteq> []) \<longrightarrow> i \<le> length (concipaths succ s i)"
+  assume IH : "(\<forall>j<i. ithpath succ s j \<noteq> []) \<Longrightarrow> i \<le> length (concipaths succ s i)"
   assume assum1 : "\<forall>j<Suc i. ithpath succ s j \<noteq> []"
   hence "i \<le> length (concipaths succ s i)" using IH by auto
   moreover have "Suc 0 \<le> length (ithpath succ s i)" by (simp add: leI assum1)
@@ -1700,7 +1691,7 @@ proof-
 qed
 
 lemma freeuntiloccurrenceprogressing_lockedenabled: "(\<exists>p. validpath M s p \<and> freeuntiloccurrence p \<alpha>\<^sub>f \<alpha>\<^sub>e \<and> progressing M B s p) = 
-  ((\<exists>p s'. validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> enabled M s' \<alpha>\<^sub>e))
+  ((\<exists>p s'. validfinpath M s p s' \<and> \<not>occurs \<alpha>\<^sub>f (fin p) \<and> (locked M B s' \<or> enabled M s' \<alpha>\<^sub>e))                   
   \<or> (\<exists>p. validinfpath M s p \<and> \<not>occurs \<alpha>\<^sub>f (inf p)))"
   apply (subst freeuntiloccurrenceprogressing_lockedenabled_pred [of _ B]; simp?)
 proof-

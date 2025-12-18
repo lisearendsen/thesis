@@ -73,7 +73,7 @@ datatype 'a formula =
   mu "'a formula" ("\<mu> _" [65] 65)
 
 abbreviation implies :: "'a formula \<Rightarrow> 'a formula \<Rightarrow> 'a formula" (infix "\<Longrightarrow>\<^sub>R" 70) where
-"f \<Longrightarrow>\<^sub>R g \<equiv> \<not>\<^sub>\<mu>f \<or>\<^sub>\<mu> g"
+  "f \<Longrightarrow>\<^sub>R g \<equiv> \<not>\<^sub>\<mu>f \<or>\<^sub>\<mu> g"
 
 datatype example_states = s\<^sub>0 | s\<^sub>1 | s\<^sub>2
 datatype example_actions = \<a> | \<b> | \<c>
@@ -140,8 +140,8 @@ where
   "\<lbrakk>neg f\<rbrakk> M e = -(\<lbrakk>f\<rbrakk> M e)" |
   "\<lbrakk>and' f f'\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e \<inter> \<lbrakk>f'\<rbrakk> M e" |
   "\<lbrakk>or f f'\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e \<union> \<lbrakk>f'\<rbrakk> M e" |
-  "\<lbrakk>diamond act f\<rbrakk> M e = {s. \<exists> s'. (s, act, s') \<in> transition M \<and> s'\<in> \<lbrakk>f\<rbrakk> M e}" |
-  "\<lbrakk>box act f\<rbrakk> M e = {s. \<forall> s'. (s, act, s') \<in> transition M \<longrightarrow> s'\<in> \<lbrakk>f\<rbrakk> M e}" |
+  "\<lbrakk>diamond act f\<rbrakk> M e = {s. \<exists>s'. (s, act, s') \<in> transition M \<and> s'\<in> \<lbrakk>f\<rbrakk> M e}" |
+  "\<lbrakk>box act f\<rbrakk> M e = {s. \<forall>s'. (s, act, s') \<in> transition M \<longrightarrow> s'\<in> \<lbrakk>f\<rbrakk> M e}" |
   "\<lbrakk>nu f\<rbrakk> M e = \<Union> {S'. S' \<subseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}" |
   "\<lbrakk>mu f\<rbrakk> M e = \<Inter> {S'. S' \<supseteq> \<lbrakk>f\<rbrakk> M (newenvironment e S')}"
 
@@ -242,7 +242,7 @@ proof
 qed
 
 lemma newenvenvrepeatswitch : "newenvironment (envrepeati e i) S' = envrepeati (newenvironment e S') (Suc i)"
-  apply (rule)
+  apply rule
   apply (induct_tac x; simp add: envrepeatidef)
 proof (rule impI)+
   fix n
@@ -401,31 +401,31 @@ subsubsection \<open>Duality of formulas\<close>
 lemma negformula : "s \<in> \<lbrakk>neg f\<rbrakk> M e \<longleftrightarrow> s \<notin> \<lbrakk>f\<rbrakk> M e" 
   by simp
 
-lemma negtrue [simp] : "\<lbrakk>neg tt\<rbrakk> M e = \<lbrakk>ff\<rbrakk> M e"
+lemma negtrue : "\<lbrakk>neg tt\<rbrakk> M e = \<lbrakk>ff\<rbrakk> M e"
   by simp
 
-lemma negfalse [simp]: "\<lbrakk>neg ff\<rbrakk> M e = \<lbrakk>tt\<rbrakk> M e"
+lemma negfalse : "\<lbrakk>neg ff\<rbrakk> M e = \<lbrakk>tt\<rbrakk> M e"
   by simp
 
-lemma negnegf [simp] : "\<lbrakk>neg (neg (f))\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e"
+lemma negnegf : "\<lbrakk>neg (neg (f))\<rbrakk> M e = \<lbrakk>f\<rbrakk> M e"
   by simp
 
-lemma negand' [simp] : "\<lbrakk>neg (and' f f')\<rbrakk> M e = \<lbrakk>or (neg f) (neg f')\<rbrakk> M e"
+lemma negand' : "\<lbrakk>neg (and' f f')\<rbrakk> M e = \<lbrakk>or (neg f) (neg f')\<rbrakk> M e"
   by simp
 
-lemma negAnd [simp] : "finite A \<Longrightarrow> \<lbrakk>neg (And A F)\<rbrakk> M e = \<lbrakk>Or A (\<lambda>a. neg (F a))\<rbrakk> M e"
+lemma negAnd : "finite A \<Longrightarrow> \<lbrakk>neg (And A F)\<rbrakk> M e = \<lbrakk>Or A (\<lambda>a. neg (F a))\<rbrakk> M e"
   by auto
 
-lemma negor [simp] : "\<lbrakk>neg (or f f')\<rbrakk> M e = \<lbrakk>and' (neg f) (neg f')\<rbrakk> M e"
+lemma negor : "\<lbrakk>neg (or f f')\<rbrakk> M e = \<lbrakk>and' (neg f) (neg f')\<rbrakk> M e"
   by simp
 
-lemma negOr [simp] : "finite A \<Longrightarrow> \<lbrakk>neg (Or A F)\<rbrakk> M e = \<lbrakk>And A (\<lambda>a. neg (F a))\<rbrakk> M e"
+lemma negOr : "\<lbrakk>neg (Or A F)\<rbrakk> M e = \<lbrakk>And A (\<lambda>a. neg (F a))\<rbrakk> M e"
+  by (simp add: Or_def)
+
+lemma negbox : "\<lbrakk>neg (box a f)\<rbrakk> M e = \<lbrakk>diamond a (neg f)\<rbrakk> M e"
   by auto
 
-lemma negbox : "\<lbrakk>\<not>\<^sub>\<mu>[act]\<^sub>\<mu>f\<rbrakk> M e = \<lbrakk>\<langle>act\<rangle>\<^sub>\<mu>(\<not>\<^sub>\<mu>f)\<rbrakk> M e"
-  by auto
-
-lemma negdiamond : "\<lbrakk>\<not>\<^sub>\<mu>\<langle>act\<rangle>\<^sub>\<mu>f\<rbrakk> M e = \<lbrakk>[act]\<^sub>\<mu>(\<not>\<^sub>\<mu>f)\<rbrakk> M e"
+lemma negdiamond : "\<lbrakk>neg (diamond a f)\<rbrakk> M e = \<lbrakk>box a (neg f)\<rbrakk> M e"
   by auto
 
 lemma movenegvarin : "\<lbrakk>f\<rbrakk> M e(i := -e(i)) = \<lbrakk>negvar f i\<rbrakk> M e"
@@ -440,7 +440,7 @@ proof-
   thus " \<lbrakk>f\<rbrakk> M (newenvironment e S') (Suc i := -e i) = \<lbrakk>negvar f (Suc i)\<rbrakk> M (newenvironment e S')" by simp
 qed
 
-lemma negnu : "\<lbrakk>\<not>\<^sub>\<mu>(\<nu> f)\<rbrakk> M e = \<lbrakk>\<mu> \<not>\<^sub>\<mu>(negvar f 0)\<rbrakk> M e"
+lemma negnu : "\<lbrakk>neg (nu f)\<rbrakk> M e = \<lbrakk>mu (neg (negvar f 0))\<rbrakk> M e"
 proof-
   have "\<And> S'. \<lbrakk>neg f\<rbrakk> M (newenvironment e (-S')) = \<lbrakk>negvar (neg f) 0\<rbrakk> M (newenvironment e S')" using movenegvarin newenvironmentzerocomplement by metis  
   hence "\<Inter> {S'. S' \<supseteq> \<lbrakk>neg f\<rbrakk> M (newenvironment e (-S'))} = \<Inter> {S'. S' \<supseteq> \<lbrakk>neg (negvar f 0)\<rbrakk> M (newenvironment e S')}" by auto
@@ -454,7 +454,7 @@ lemma negvarnegvar [simp] : "\<lbrakk>negvar (negvar f i) i\<rbrakk> M e = \<lbr
       fun_upd_upd movenegvarin)*)
   by (induct f arbitrary : i e; simp)
 
-lemma negmu : "\<lbrakk>\<not>\<^sub>\<mu>(\<mu> f)\<rbrakk> M e = \<lbrakk>\<nu> \<not>\<^sub>\<mu>(negvar f 0)\<rbrakk> M e"
+lemma negmu : "\<lbrakk>neg (mu f)\<rbrakk> M e = \<lbrakk>nu (neg (negvar f 0))\<rbrakk> M e"
 proof-
   have "\<lbrakk>mu (neg (negvar (neg (negvar f 0)) 0))\<rbrakk> M e = \<lbrakk>neg (nu (neg (negvar f 0)))\<rbrakk> M e" by (simp only: negnu)
   hence "\<lbrakk>neg (mu (neg (negvar (neg (negvar f 0)) 0)))\<rbrakk> M e = \<lbrakk>neg (neg (nu (neg (negvar f 0))))\<rbrakk> M e" by auto
@@ -767,7 +767,7 @@ proof-
 qed
 
 lemma notdependseqmu :
-  assumes "\<not> dependvar f M 0"
+  assumes "\<not>dependvar f M 0"
   shows "\<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>mu f\<rbrakk> M e"
 proof-
   have "\<forall>S''. \<lbrakk>f\<rbrakk> M (newenvironment e S') = \<lbrakk>f\<rbrakk> M ((newenvironment e S') (0 := S''))" using assms dependvar_def by blast
